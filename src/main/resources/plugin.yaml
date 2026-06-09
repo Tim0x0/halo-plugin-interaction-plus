@@ -1,0 +1,22 @@
+# Refer https://docs.halo.run/developer-guide/plugin/basics/manifest
+
+apiVersion: plugin.halo.run/v1alpha1
+kind: Plugin
+metadata:
+  # The name defines how the plugin is invoked, A unique name
+  name: interaction-plus
+spec:
+  enabled: true
+  requires: ">=2.23.0"
+  author:
+    name: Tim0x0
+    website: https://github.com/Tim0x0
+  logo: logo.png
+  homepage: https://github.com/Tim0x0/interaction-plus#readme
+  repo: https://github.com/Tim0x0/interaction-plus
+  issues: https://github.com/Tim0x0/interaction-plus/issues
+  displayName: "互动增强"
+  description: "为 Halo 提供用户装饰、身份标识和前台展示组件。"
+  license:
+    - name: "GPL-3.0"
+      url: "https://github.com/Tim0x0/interaction-plus/blob/main/LICENSE"
