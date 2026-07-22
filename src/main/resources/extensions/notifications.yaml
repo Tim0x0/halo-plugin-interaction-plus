@@ -1,0 +1,152 @@
+# interaction-plus 通知事件类型与模板
+# 基于 Halo 官方通知系统：ReasonType + NotificationTemplate
+
+# ── 事件类型 ────────────────────────────────────────────────────────
+apiVersion: notification.halo.run/v1alpha1
+kind: ReasonType
+metadata:
+  name: interaction-plus-decoration-granted
+spec:
+  displayName: "获得装饰"
+  description: "用户获得新装饰时触发（同一批次合并为一条）。"
+  properties:
+    - name: count
+      type: string
+      description: "本次获得的装饰数量。"
+    - name: decorations
+      type: string
+      description: "装饰名称列表，已拼接为文本。"
+---
+apiVersion: notification.halo.run/v1alpha1
+kind: ReasonType
+metadata:
+  name: interaction-plus-decoration-revoked
+spec:
+  displayName: "装饰被撤销"
+  description: "用户装饰被撤销时触发。"
+  properties:
+    - name: decoration
+      type: string
+      description: "被撤销的装饰名称。"
+    - name: reasonSentence
+      type: string
+      description: "撤销原因句子；无原因时为空字符串。"
+      optional: true
+---
+apiVersion: notification.halo.run/v1alpha1
+kind: ReasonType
+metadata:
+  name: interaction-plus-submission-approved
+spec:
+  displayName: "装饰投稿已通过"
+  description: "用户提交的装饰草稿被启用时触发。"
+  properties:
+    - name: decoration
+      type: string
+      description: "装饰名称。"
+---
+apiVersion: notification.halo.run/v1alpha1
+kind: ReasonType
+metadata:
+  name: interaction-plus-submission-rejected
+spec:
+  displayName: "装饰投稿未通过"
+  description: "用户提交的装饰草稿被驳回删除时触发。"
+  properties:
+    - name: decoration
+      type: string
+      description: "装饰名称。"
+---
+apiVersion: notification.halo.run/v1alpha1
+kind: ReasonType
+metadata:
+  name: interaction-plus-batch-grant-completed
+spec:
+  displayName: "装饰批量授予完成"
+  description: "批量授予执行完成时通知操作者。"
+  properties:
+    - name: success
+      type: string
+      description: "成功数量。"
+    - name: skipped
+      type: string
+      description: "跳过数量。"
+    - name: failed
+      type: string
+      description: "失败数量。"
+---
+# ── 通知模板 ────────────────────────────────────────────────────────
+apiVersion: notification.halo.run/v1alpha1
+kind: NotificationTemplate
+metadata:
+  name: interaction-plus-template-decoration-granted
+spec:
+  reasonSelector:
+    reasonType: interaction-plus-decoration-granted
+    language: default
+  template:
+    title: "你获得了新的装饰"
+    rawBody: |
+      你获得了 [(${count})] 个新装饰：[(${decorations})]。
+    htmlBody: |
+      <p th:text="|你获得了 ${count} 个新装饰：${decorations}。|"></p>
+---
+apiVersion: notification.halo.run/v1alpha1
+kind: NotificationTemplate
+metadata:
+  name: interaction-plus-template-decoration-revoked
+spec:
+  reasonSelector:
+    reasonType: interaction-plus-decoration-revoked
+    language: default
+  template:
+    title: "你的装饰已被撤销"
+    rawBody: |
+      装饰「[(${decoration})]」已被撤销。[(${reasonSentence})]
+    htmlBody: |
+      <p th:text="|装饰「${decoration}」已被撤销。${reasonSentence}|"></p>
+---
+apiVersion: notification.halo.run/v1alpha1
+kind: NotificationTemplate
+metadata:
+  name: interaction-plus-template-submission-approved
+spec:
+  reasonSelector:
+    reasonType: interaction-plus-submission-approved
+    language: default
+  template:
+    title: "你的装饰投稿已通过"
+    rawBody: |
+      你提交的装饰「[(${decoration})]」已启用。
+    htmlBody: |
+      <p th:text="|你提交的装饰「${decoration}」已启用。|"></p>
+---
+apiVersion: notification.halo.run/v1alpha1
+kind: NotificationTemplate
+metadata:
+  name: interaction-plus-template-submission-rejected
+spec:
+  reasonSelector:
+    reasonType: interaction-plus-submission-rejected
+    language: default
+  template:
+    title: "你的装饰投稿未通过"
+    rawBody: |
+      你提交的装饰「[(${decoration})]」未通过审核。
+    htmlBody: |
+      <p th:text="|你提交的装饰「${decoration}」未通过审核。|"></p>
+---
+apiVersion: notification.halo.run/v1alpha1
+kind: NotificationTemplate
+metadata:
+  name: interaction-plus-template-batch-grant-completed
+spec:
+  reasonSelector:
+    reasonType: interaction-plus-batch-grant-completed
+    language: default
+  template:
+    title: "装饰批量授予完成"
+    rawBody: |
+      本次批量授予完成：成功 [(${success})]，跳过 [(${skipped})]，失败 [(${failed})]。
+    htmlBody: |
+      <p th:text="|本次批量授予完成：成功 ${success}，跳过 ${skipped}，失败 ${failed}。|"></p>

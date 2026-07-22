@@ -1,0 +1,130 @@
+/*
+ * interaction-plus 设计 token
+ * Console / UC 共享一份，按浓度取用：
+ * Console 克制现代（灰阶、信息密度优先）；UC 游戏化表现力（稀有度色阶、微光）。
+ */
+:root {
+  /* 圆角 */
+  --hip-radius-card: 10px;
+  --hip-radius-thumb: 8px;
+  --hip-radius-chip: 6px;
+
+  /* 灰阶分层 */
+  --hip-text-primary: #1f2937;
+  --hip-text-secondary: #4b5563;
+  --hip-text-muted: #6b7280;
+  --hip-text-faint: #9ca3af;
+
+  /* 边框与底色 */
+  --hip-border: #e5e7eb;
+  --hip-border-light: #f3f4f6;
+  --hip-bg-card: #ffffff;
+  --hip-bg-subtle: #f9fafb;
+  --hip-bg-thumb: #f3f4f6;
+
+  /* 阴影（hover 柔和阴影） */
+  --hip-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --hip-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+
+  /* 字号 */
+  --hip-font-body: 13px;
+  --hip-font-title: 14px;
+  --hip-font-caption: 12px;
+
+  /* 间距 */
+  --hip-gap-sm: 8px;
+  --hip-gap-md: 12px;
+  --hip-gap-lg: 16px;
+
+  /* 过渡（Console 150ms 级微过渡） */
+  --hip-transition: 150ms ease;
+
+  /* 主题色（跟随 Halo 主色） */
+  --hip-primary: #4ccba0;
+  --hip-danger: #d71d1d;
+  --hip-warning: #f59e0b;
+
+  /* 稀有度游戏色阶兜底（实际描边色优先取稀有度配置的 color） */
+  --hip-rarity-common: #9ca3af;
+  --hip-rarity-uncommon: #22c55e;
+  --hip-rarity-rare: #3b82f6;
+  --hip-rarity-epic: #a855f7;
+  --hip-rarity-legendary: #f59e0b;
+}
+
+/*
+ * 共享表格体系：原生 table（table-layout: auto），列宽按内容自然分配——
+ * 信息列加 .hip-td-fit（width:1% + nowrap）收缩到内容宽，主列自动吃掉剩余空间，
+ * 所有行天然列对齐，几列的小表不会被强行拉伸得很空。
+ */
+.hip-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+/* 少列的配置型列表（元数据 / 身份标识 / 投稿）：内容宽度，不强制撑满容器，
+   避免几列被拉伸得很空；列宽随内容自适应，名称长短不互相挤压 */
+.hip-table--auto {
+  width: auto;
+  min-width: min(560px, 100%);
+}
+.hip-table th {
+  text-align: left;
+  font-weight: 400;
+  font-size: var(--hip-font-caption);
+  color: var(--hip-text-faint);
+  background: var(--hip-bg-subtle);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hip-border-light);
+  white-space: nowrap;
+}
+.hip-table td {
+  padding: 10px 12px;
+  vertical-align: middle;
+  font-size: var(--hip-font-caption);
+  color: var(--hip-text-muted);
+}
+.hip-table tbody tr + tr td {
+  border-top: 1px solid var(--hip-border-light);
+}
+.hip-table tbody tr {
+  transition: background var(--hip-transition);
+}
+.hip-table tbody tr:hover {
+  background: var(--hip-bg-subtle);
+}
+/* 收缩列：宽度跟随内容（时间 / 状态 / 标签 / 操作等信息列） */
+.hip-td-fit {
+  width: 1%;
+  white-space: nowrap;
+}
+/* 主列（名称 / 描述）：吃掉剩余空间，内容溢出截断 */
+.hip-table__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+}
+.hip-table__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--hip-font-title);
+  font-weight: 500;
+  color: var(--hip-text-primary);
+  min-width: 0;
+}
+.hip-table__title-text {
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hip-table__desc {
+  max-width: 380px;
+  font-size: var(--hip-font-caption);
+  color: var(--hip-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

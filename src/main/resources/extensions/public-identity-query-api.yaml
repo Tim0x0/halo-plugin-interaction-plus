@@ -1,0 +1,22 @@
+apiVersion: plugin.halo.run/v1alpha1
+kind: ExtensionPointDefinition
+metadata:
+  name: public-identity-query-api
+spec:
+  className: com.timxs.interactionplus.api.PublicIdentityQueryApi
+  displayName: "对外身份查询 API"
+  type: SINGLETON
+  description: "供其他插件经 ExtensionGetter.getEnabledExtension 获取 PublicIdentityQueryApi 并调用，在后端进程内查询用户公开身份与装扮数据。"
+---
+# 登记上面扩展点的内置实现（与 EPD 成对，对齐官方 plugin-ai-foundation 规范）。
+# 缺 ED 时 Halo 有兜底（扫描全部实现仍可取到），但补上后：后台「系统 → 扩展」可见可管；
+# 且系统配置一旦写入本扩展点条目就只按 ED 名单取实现，未登记会静默失联（v2.25 源码核实）。
+apiVersion: plugin.halo.run/v1alpha1
+kind: ExtensionDefinition
+metadata:
+  name: interaction-plus-public-identity-query-api
+spec:
+  className: com.timxs.interactionplus.identity.service.PublicIdentityQueryApiImpl
+  extensionPointName: public-identity-query-api
+  displayName: "内置身份查询"
+  description: "interaction-plus 内置的对外身份查询实现"

@@ -1,0 +1,51 @@
+plugins {
+    id 'java'
+    id 'maven-publish'
+}
+
+group = 'com.timxs.interactionplus'
+// 版本号由根项目 gradle.properties 的 version 提供，同时作为 JitPack 发布版本
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // 仅用 Halo 提供的 pf4j ExtensionPoint 与 reactor：运行时由宿主提供，编译期可见即可，不打包。
+    // 外部插件依赖本 api 模块时同理（compileOnly），运行时由 Halo 提供这些传递依赖。
+    compileOnly platform('run.halo.tools.platform:plugin:2.25.0')
+    compileOnly 'run.halo.app:api'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    // 附带源码 jar，便于外部插件查阅接口 / DTO 定义
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.release = 21
+}
+
+// 发布到 JitPack，供其他 Halo 插件 compileOnly 依赖（接口 + DTO）。
+// JitPack 多模块坐标约定（见 https://docs.jitpack.io/ ）：
+//   group    = com.github.<GitHub 用户>.<仓库名>
+//   artifact = 模块 artifactId（此处为 api）
+//   version  = git tag（须与 gradle.properties 的 version 保持一致）
+// 最终坐标：com.github.Tim0x0.halo-plugin-interaction-plus:api:<version>
+// 发布方式：打 tag（如 v0.1.0）并 push，JitPack 收到后自动构建出包。
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            // 显式覆盖发布坐标；project.group（com.timxs.interactionplus）仅用于本地构建命名空间，
+            // 不影响 JitPack 路由——JitPack 按 USER.REPO 定位仓库、按 artifactId 取模块。
+            groupId = 'com.github.Tim0x0.halo-plugin-interaction-plus'
+            artifactId = 'api'
+            version = project.version
+        }
+    }
+}

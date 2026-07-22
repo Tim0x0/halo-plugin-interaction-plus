@@ -1,0 +1,16 @@
+/*
+ * interaction-plus runtime 基础样式。
+ * 组件内部样式位于各自 Shadow DOM 中，这里只提供可被主题覆盖的 CSS 变量默认值。
+ * 注意：取值必须与组件内 var() 兜底值、docs/theme-integration.md 变量表三方一致，
+ * 改动任一侧时同步其余两处（此处的 :root 值会穿透 Shadow DOM 覆盖组件兜底值）。
+ */
+:root {
+  --hip-identity-gap: 4px;
+  --hip-badge-size: 18px;
+  --hip-title-radius: 4px;
+  --hip-card-width: 560px;
+  --hip-card-radius: 12px;
+  --hip-card-shadow: 0 8px 28px rgba(31, 35, 40, 0.16);
+  --hip-text-color: inherit;
+  --hip-muted-color: #6b7280;
+}

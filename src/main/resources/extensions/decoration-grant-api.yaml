@@ -1,0 +1,22 @@
+apiVersion: plugin.halo.run/v1alpha1
+kind: ExtensionPointDefinition
+metadata:
+  name: decoration-grant-api
+spec:
+  className: com.timxs.interactionplus.api.DecorationGrantApi
+  displayName: "对外发奖 API"
+  type: SINGLETON
+  description: "供其他插件经 ExtensionGetter.getEnabledExtension 获取 DecorationGrantApi 并调用，发放 / 撤销用户装饰。"
+---
+# 登记上面扩展点的内置实现（与 EPD 成对，对齐官方 plugin-ai-foundation 规范）。
+# 缺 ED 时 Halo 有兜底（扫描全部实现仍可取到），但补上后：后台「系统 → 扩展」可见可管；
+# 且系统配置一旦写入本扩展点条目就只按 ED 名单取实现，未登记会静默失联（v2.25 源码核实）。
+apiVersion: plugin.halo.run/v1alpha1
+kind: ExtensionDefinition
+metadata:
+  name: interaction-plus-decoration-grant-api
+spec:
+  className: com.timxs.interactionplus.decoration.service.DecorationGrantApiImpl
+  extensionPointName: decoration-grant-api
+  displayName: "内置装饰发放"
+  description: "interaction-plus 内置的对外发奖实现"

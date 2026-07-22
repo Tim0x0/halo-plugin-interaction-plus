@@ -1,0 +1,136 @@
+# interaction-plus 插件角色模板（RBAC）
+# 权限命名：plugin:interaction-plus:<module>:<action>
+# 自定义 API group：
+#   console.api.interaction-plus.timxs.com  （Console 管理 API）
+#   uc.api.interaction-plus.timxs.com       （用户中心 API）
+#   api.interaction-plus.timxs.com          （站点前台公开 API）
+# 业务资源 group：interaction-plus.timxs.com（Extension 自动 CRUD）
+
+# ── 提交装饰草稿（decoration:submit）────────────────────────────────
+apiVersion: v1alpha1
+kind: Role
+metadata:
+  name: interaction-plus-role-decoration-submitter
+  labels:
+    halo.run/role-template: "true"
+  annotations:
+    rbac.authorization.halo.run/module: "互动增强"
+    rbac.authorization.halo.run/display-name: "提交装饰草稿"
+    rbac.authorization.halo.run/ui-permissions: |
+      ["plugin:interaction-plus:decoration:submit"]
+rules:
+  - apiGroups: ["uc.api.interaction-plus.timxs.com"]
+    resources: ["submissions"]
+    verbs: ["create", "get", "list", "update", "delete"]
+  - apiGroups: ["uc.api.interaction-plus.timxs.com"]
+    resources: ["metadata"]
+    verbs: ["get", "list"]
+---
+# ── 管理装饰资产（decoration:manage）────────────────────────────────
+apiVersion: v1alpha1
+kind: Role
+metadata:
+  name: interaction-plus-role-decoration-manager
+  labels:
+    halo.run/role-template: "true"
+  annotations:
+    rbac.authorization.halo.run/module: "互动增强"
+    rbac.authorization.halo.run/display-name: "管理装饰资产"
+    rbac.authorization.halo.run/ui-permissions: |
+      ["plugin:interaction-plus:decoration:manage"]
+rules:
+  # 动作端点为子资源风格（/{name}/activate 等），RBAC 需显式声明子资源
+  - apiGroups: ["console.api.interaction-plus.timxs.com"]
+    resources:
+      - "assets"
+      - "assets/activate"
+      - "assets/disable"
+      - "assets/archive"
+      - "assets/unarchive"
+      - "assets/active-grant-count"
+      - "categories"
+      - "categories/usage-count"
+      - "tags"
+      - "tags/usage-count"
+      - "rarities"
+      - "rarities/usage-count"
+    verbs: ["create", "get", "list", "update", "delete"]
+---
+# ── 授予与撤销装饰（decoration:grant）───────────────────────────────
+apiVersion: v1alpha1
+kind: Role
+metadata:
+  name: interaction-plus-role-decoration-grant-manager
+  labels:
+    halo.run/role-template: "true"
+  annotations:
+    rbac.authorization.halo.run/module: "互动增强"
+    rbac.authorization.halo.run/display-name: "授予与撤销装饰"
+    rbac.authorization.halo.run/ui-permissions: |
+      ["plugin:interaction-plus:decoration:grant"]
+rules:
+  # 动作端点为子资源风格（/-/grant-by-role-snapshot、/-/revoke-held、/{name}/revoke），RBAC 需显式声明子资源
+  - apiGroups: ["console.api.interaction-plus.timxs.com"]
+    resources:
+      - "grants"
+      - "grants/grant-by-role-snapshot"
+      - "grants/revoke"
+      - "grants/revoke-held"
+    verbs: ["create", "get", "list", "update", "delete"]
+  # 授予时需要读取装饰资产用于选择
+  - apiGroups: ["console.api.interaction-plus.timxs.com"]
+    resources: ["assets"]
+    verbs: ["get", "list"]
+---
+# ── 佩戴我的装饰（decoration:equip）默认聚合给所有登录用户 ──────────
+apiVersion: v1alpha1
+kind: Role
+metadata:
+  name: interaction-plus-role-decoration-user
+  labels:
+    halo.run/role-template: "true"
+    rbac.authorization.halo.run/aggregate-to-authenticated: "true"
+  annotations:
+    rbac.authorization.halo.run/module: "互动增强"
+    rbac.authorization.halo.run/display-name: "佩戴我的装饰"
+    rbac.authorization.halo.run/ui-permissions: |
+      ["plugin:interaction-plus:decoration:equip"]
+rules:
+  - apiGroups: ["uc.api.interaction-plus.timxs.com"]
+    resources: ["inventory", "profile", "profile/visibility", "metadata"]
+    verbs: ["get", "list", "update"]
+---
+# ── 管理互动配置（system:manage）────────────────────────────────────
+apiVersion: v1alpha1
+kind: Role
+metadata:
+  name: interaction-plus-role-system-manager
+  labels:
+    halo.run/role-template: "true"
+  annotations:
+    rbac.authorization.halo.run/module: "互动增强"
+    rbac.authorization.halo.run/display-name: "管理互动配置"
+    rbac.authorization.halo.run/ui-permissions: |
+      ["plugin:interaction-plus:system:manage"]
+rules:
+  - apiGroups: ["console.api.interaction-plus.timxs.com"]
+    resources: ["identity-mark-mappings"]
+    verbs: ["create", "get", "list", "update", "delete"]
+---
+# ── 公开身份 API（默认聚合给游客与登录用户）─────────────────────────
+apiVersion: v1alpha1
+kind: Role
+metadata:
+  name: interaction-plus-role-public
+  labels:
+    halo.run/role-template: "true"
+    halo.run/hidden: "true"
+    rbac.authorization.halo.run/aggregate-to-anonymous: "true"
+    rbac.authorization.halo.run/aggregate-to-authenticated: "true"
+  annotations:
+    rbac.authorization.halo.run/module: "互动增强"
+    rbac.authorization.halo.run/display-name: "公开身份展示"
+rules:
+  - apiGroups: ["api.interaction-plus.timxs.com"]
+    resources: ["identity", "identities", "identity/decorations"]
+    verbs: ["get", "list", "create"]

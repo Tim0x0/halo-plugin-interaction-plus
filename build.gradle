@@ -4,15 +4,20 @@ plugins {
     id "run.halo.plugin.devtools" version "0.6.2"
 }
 
-group 'timxs.com.interactionplus'
+group 'com.timxs.interactionplus'
+// 版本号由 gradle.properties 的 version 提供
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    implementation platform('run.halo.tools.platform:plugin:2.23.0')
+    // Halo 2.25.0 正式版构件已发布 Maven Central（2026-06-12 升级，确认稿 §37.1 升级清单）
+    implementation platform('run.halo.tools.platform:plugin:2.25.0')
     compileOnly 'run.halo.app:api'
+
+    // 对外发奖 API 契约（接口 + DTO）：打进插件 jar，供本插件实现、外部插件 compileOnly 依赖
+    implementation project(':api')
 
     testImplementation 'run.halo.app:api'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
@@ -34,9 +39,10 @@ tasks.withType(JavaCompile).configureEach {
     options.release = 21
 }
 
+// Halo 2.25 起插件前端资源默认从 resources/ui 读取，不再输出到旧的 console 目录
 tasks.register('processUiResources', Copy) {
     from project(':ui').layout.buildDirectory.dir('dist')
-    into layout.buildDirectory.dir('resources/main/console')
+    into layout.buildDirectory.dir('resources/main/ui')
     dependsOn project(':ui').tasks.named('assemble')
     shouldRunAfter tasks.named('processResources')
 }
@@ -45,11 +51,24 @@ tasks.named('classes') {
     dependsOn tasks.named('processUiResources')
 }
 
+// 前台 Runtime 产物输出到插件静态资源目录：
+// /plugins/interaction-plus/assets/runtime/interaction-plus.runtime.js|css
+tasks.register('processRuntimeResources', Copy) {
+    from project(':runtime').layout.buildDirectory.dir('dist')
+    into layout.buildDirectory.dir('resources/main/assets/runtime')
+    dependsOn project(':runtime').tasks.named('assemble')
+    shouldRunAfter tasks.named('processResources')
+}
+
+tasks.named('classes') {
+    dependsOn tasks.named('processRuntimeResources')
+}
+
 tasks.named('generatePluginComponentsIdx') {
     notCompatibleWithConfigurationCache('This task invokes "Task.project" at execution time, which is not supported with configuration cache.')
 }
 
 halo {
-    version = '2.23'
+    version = '2.25.0'
 }
 

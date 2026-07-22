@@ -1,0 +1,15 @@
+# 前台 Runtime 静态资源路由声明。
+# Halo 内置路由只服务 classpath ui/ 与 console/ 两个目录，
+# assets/runtime/ 下的产物必须通过 ReverseProxy 暴露。
+# 注意：rule.path 相对于 /plugins/{name}/assets/ 前缀拼接
+# （源码 ReverseProxyRouterFunctionFactory.buildRoutePath），
+# 此处写 /runtime/** 即得最终 URL /plugins/interaction-plus/assets/runtime/**；
+# 写成 /assets/runtime/** 会变成双重 assets 导致 404。
+apiVersion: plugin.halo.run/v1alpha1
+kind: ReverseProxy
+metadata:
+  name: interaction-plus-runtime-reverse-proxy
+rules:
+  - path: /runtime/**
+    file:
+      directory: assets/runtime

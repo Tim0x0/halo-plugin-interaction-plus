@@ -1,0 +1,16 @@
+{
+  "name": "@interaction-plus/runtime",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "dev": "vite build --watch --mode=development",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.21",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5"
+  },
+  "packageManager": "pnpm@10.12.4"
+}

@@ -5,3 +5,5 @@ pluginManagement {
 }
 rootProject.name = 'plugin-interaction-plus'
 include 'ui'
+include 'runtime'
+include 'api'

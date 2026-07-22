@@ -1,0 +1,106 @@
+apiVersion: v1alpha1
+kind: Setting
+metadata:
+  name: interaction-plus-settings
+spec:
+  forms:
+    - group: decoration.display
+      label: 装饰展示
+      formSchema:
+        # 类型开关：官方 $formkit:group 分组（数据嵌套在 types 对象下）
+        - $formkit: group
+          name: types
+          label: 类型开关
+          children:
+            - $formkit: switch
+              name: enabledBadge
+              label: 启用勋章展示
+              value: true
+            - $formkit: switch
+              name: enabledAvatarFrame
+              label: 启用头像框展示
+              value: true
+            - $formkit: switch
+              name: enabledTitle
+              label: 启用称号展示
+              value: true
+            - $formkit: switch
+              name: enabledNameStyle
+              label: 启用昵称样式展示
+              value: true
+            - $formkit: switch
+              name: enabledCardBackground
+              label: 启用名片背景展示
+              value: true
+            - $formkit: switch
+              name: enabledIdentityMark
+              label: 启用身份标识展示
+              value: true
+        # 场景密度：官方 $formkit:group 分组（数据嵌套在 density 对象下）
+        - $formkit: group
+          name: density
+          label: 场景密度
+          children:
+            - $formkit: switch
+              name: identityLineShowPrimaryBadge
+              label: 身份行显示主勋章
+              value: true
+            - $formkit: number
+              name: identityLineIdentityLimit
+              label: 身份行身份标识数量
+              help: 取值范围 1 - 3（身份行随昵称展示，主流只显 1-2 个）
+              value: 1
+              min: 1
+              max: 3
+              validation: "required|min:1|max:3"
+            - $formkit: number
+              name: userCardShowcaseBadgeLimit
+              label: 卡片展示勋章数量
+              help: 取值范围 0 - 8（展柜行按收藏格展示，超出的勋章收进「+N」计数格）
+              value: 5
+              min: 0
+              max: 8
+              validation: "required|min:0|max:8"
+            - $formkit: number
+              name: userCardIdentityLimit
+              label: 卡片身份标识数量
+              help: 取值范围 1 - 5
+              value: 3
+              min: 1
+              max: 5
+              validation: "required|min:1|max:5"
+        - $formkit: number
+          name: publicIdentityCacheTtlSeconds
+          label: 公开身份缓存时间（秒）
+          help: 取值范围 0 - 300，0 表示关闭缓存；互动统计随公开身份同缓存，关闭缓存时统计数据每次实时查询
+          value: 30
+          min: 0
+          max: 300
+          validation: "required|min:0|max:300"
+    - group: decoration.management
+      label: 装饰管理
+      formSchema:
+        # 用户投稿：官方 $formkit:group 分组（数据嵌套在 submission 对象下）
+        - $formkit: group
+          name: submission
+          label: 用户投稿
+          children:
+            - $formkit: switch
+              name: enabled
+              label: 启用用户投稿入口
+              help: 实际可见性仍由“提交装饰草稿”权限控制
+              value: true
+        # 素材建议（尺寸/大小）为表单内写死的提示文案，无需配置化——有真实自定义诉求再加
+        # 数据清理：官方 $formkit:group 分组（数据嵌套在 cleanup 对象下）
+        - $formkit: group
+          name: cleanup
+          label: 数据清理
+          children:
+            - $formkit: number
+              name: grantRetentionDays
+              label: 失效授予记录保留天数
+              help: 已撤销 / 已过期的授予记录超过该天数后自动清理；0 表示永不清理。有效授予永不清理。
+              value: 0
+              min: 0
+              max: 3650
+              validation: "min:0|max:3650"
