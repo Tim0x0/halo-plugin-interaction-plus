@@ -225,7 +225,7 @@ WornDecorations {                    槽位为 null = 未佩戴 / 已失效 / �
   avatarFrame     Decoration?       头像框
   title           Decoration?       称号
   primaryBadge    Decoration?       主勋章
-  badgeShowcase   List<Decoration>  勋章展示柜（≤6）
+  badgeShowcase   List<Decoration>  勋章展示柜（≤8）
   cardBackground  Decoration?       名片背景
   nameStyle       Decoration?       昵称样式
 }
