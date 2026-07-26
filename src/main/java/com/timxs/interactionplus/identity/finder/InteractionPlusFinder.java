@@ -68,12 +68,15 @@ public class InteractionPlusFinder {
      * 装饰墙：该用户获得的、当前有效（资产 active + 存在有效授予）的全部装饰，
      * 按获得时间倒序去重，自包含完整展示信息。
      *
-     * <p>尊重用户「公开装扮墙」开关——关闭时返回空列表。
+     * <p>尊重用户「公开装扮墙」开关——关闭时返回空列表；
+     * 用户不存在或被禁用时同样返回空列表（与 {@link #getIdentity} 的隐藏口径一致，
+     * 主题模板无需区分判空）。
      *
      * @param userName 用户名
      * @return 装饰列表（可能为空）
      */
     public Mono<List<PublicIdentityVo.DecorationVo>> getDecorations(String userName) {
-        return publicIdentityService.resolveOwnedDecorations(userName);
+        return publicIdentityService.resolveOwnedDecorations(userName)
+            .defaultIfEmpty(List.of());
     }
 }

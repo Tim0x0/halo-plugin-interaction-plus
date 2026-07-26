@@ -173,7 +173,7 @@ public class PublicIdentityService {
     public Mono<PublicIdentityVo> requireIdentity(String userName) {
         return getIdentity(userName)
             .switchIfEmpty(Mono.error(InteractionPlusException.notFound(
-                ErrorCodes.VALIDATION_FAILED, "用户不存在", "用户不存在或不可用。")));
+                ErrorCodes.USER_NOT_FOUND, "用户不存在", "用户不存在或不可用。")));
     }
 
     /**
@@ -612,15 +612,24 @@ public class PublicIdentityService {
      * 装饰墙：用户获得的、当前有效（资产 active + 存在有效授予）的全部装饰，按获得时间倒序去重。
      * 自包含完整展示信息，剥离授予原因 / 撤销人等私有字段。
      * 尊重用户的「公开装扮墙」开关——关闭时返回空列表。
+     *
+     * <p>用户存在性口径与 {@link #getIdentity} 一致：不存在或被禁用返回<b>空 Mono</b>
+     * （REST 出口据此 404、Finder 出口回落空列表），不向公众暴露禁用用户的装饰墙；
+     * 空列表则专指「墙开着但没有装饰 / 墙已关闭」。
      */
     public Mono<List<PublicIdentityVo.DecorationVo>> resolveOwnedDecorations(String userName) {
         if (!StringUtils.hasText(userName)) {
-            return Mono.just(List.of());
+            return Mono.empty();
         }
-        return client.fetch(UserDecorationProfile.class, NameGenerator.profileName(userName))
-            .map(profile -> !Boolean.FALSE.equals(profile.getSpec().getPublicDecorationsVisible()))
-            .defaultIfEmpty(true)
-            .flatMap(visible -> visible ? loadOwnedDecorations(userName) : Mono.just(List.of()));
+        return client.fetch(User.class, userName)
+            .filter(user -> !Boolean.TRUE.equals(user.getSpec().getDisabled()))
+            .flatMap(user ->
+                client.fetch(UserDecorationProfile.class, NameGenerator.profileName(userName))
+                    .map(profile ->
+                        !Boolean.FALSE.equals(profile.getSpec().getPublicDecorationsVisible()))
+                    .defaultIfEmpty(true)
+                    .flatMap(visible ->
+                        visible ? loadOwnedDecorations(userName) : Mono.just(List.of())));
     }
 
     private Mono<List<PublicIdentityVo.DecorationVo>> loadOwnedDecorations(String userName) {

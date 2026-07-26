@@ -41,9 +41,14 @@ public class PublicIdentityEndpoint implements CustomEndpoint {
             .flatMap(vo -> ServerResponse.ok().bodyValue(vo));
     }
 
-    /** 装饰墙：返回该用户获得的、当前有效的全部装饰（自包含，尊重用户公开开关）。 */
+    /**
+     * 装饰墙：返回该用户获得的、当前有效的全部装饰（自包含，尊重用户公开开关）。
+     * 用户不存在或被禁用时 404，与 {@code GET /identity/{userName}} 口径一致。
+     */
     private Mono<ServerResponse> getOwnedDecorations(ServerRequest request) {
         return publicIdentityService.resolveOwnedDecorations(request.pathVariable("userName"))
+            .switchIfEmpty(Mono.error(InteractionPlusException.notFound(
+                ErrorCodes.USER_NOT_FOUND, "用户不存在", "用户不存在或不可用。")))
             .flatMap(list -> ServerResponse.ok().bodyValue(list));
     }
 

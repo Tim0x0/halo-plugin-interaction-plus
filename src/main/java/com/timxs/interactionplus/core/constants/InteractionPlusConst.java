@@ -26,6 +26,9 @@ public final class InteractionPlusConst {
     /** Public identity 批量查询单次最大用户数。 */
     public static final int PUBLIC_IDENTITY_BATCH_LIMIT = 50;
 
+    /** Console 手动批量授予单次「用户 × 装饰」组合上限（角色快照路径按站点角色规模天然不设限）。 */
+    public static final int GRANT_BATCH_PAIR_LIMIT = 200;
+
     /** 展示勋章最大佩戴数量（与 settings.yaml 卡片展示勋章上限联动）。 */
     public static final int BADGE_SHOWCASE_MAX = 8;
 

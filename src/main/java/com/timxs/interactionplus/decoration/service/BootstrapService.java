@@ -1,15 +1,20 @@
 package com.timxs.interactionplus.decoration.service;
 
+import static run.halo.app.extension.index.query.Queries.isNull;
+
 import com.timxs.interactionplus.core.support.NameGenerator;
 import com.timxs.interactionplus.decoration.extension.UserDecorationRarity;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import run.halo.app.extension.ConfigMap;
+import run.halo.app.extension.ListOptions;
 import run.halo.app.extension.Metadata;
 import run.halo.app.extension.ReactiveExtensionClient;
 
@@ -63,8 +68,18 @@ public class BootstrapService {
     }
 
     private Mono<Void> createDefaultRarities() {
-        return Flux.fromIterable(DEFAULT_RARITIES)
-            .concatMap(this::createRarity)
+        // 创建 + 写标记非原子：中途失败时标记不落、下次启动重跑。内部名随机，
+        // 按 displayName 跳过已建条目，保证部分失败重跑不产出重名稀有度
+        var options = ListOptions.builder()
+            .fieldQuery(isNull("metadata.deletionTimestamp"))
+            .build();
+        return client.listAll(UserDecorationRarity.class, options,
+                Sort.by(Sort.Order.asc("metadata.name")))
+            .map(rarity -> rarity.getSpec().getDisplayName())
+            .collect(Collectors.toSet())
+            .flatMapMany(existing -> Flux.fromIterable(DEFAULT_RARITIES)
+                .filter(def -> !existing.contains(def.displayName()))
+                .concatMap(this::createRarity))
             .then();
     }
 

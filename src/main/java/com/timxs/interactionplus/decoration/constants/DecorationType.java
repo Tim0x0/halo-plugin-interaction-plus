@@ -1,6 +1,6 @@
 package com.timxs.interactionplus.decoration.constants;
 
-import org.springframework.lang.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * 装饰类型。V1 固定 5 类普通装饰，不开放后台自定义类型。

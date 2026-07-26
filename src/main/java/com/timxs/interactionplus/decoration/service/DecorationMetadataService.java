@@ -269,7 +269,7 @@ public class DecorationMetadataService {
     }
 
     private <T> Mono<T> notFound(String label) {
-        return Mono.error(InteractionPlusException.notFound(ErrorCodes.VALIDATION_FAILED,
+        return Mono.error(InteractionPlusException.notFound(ErrorCodes.METADATA_NOT_FOUND,
             label + "不存在", label + "不存在或已被删除。"));
     }
 }

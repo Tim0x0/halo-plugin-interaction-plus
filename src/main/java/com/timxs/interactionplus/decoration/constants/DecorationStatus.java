@@ -1,6 +1,6 @@
 package com.timxs.interactionplus.decoration.constants;
 
-import org.springframework.lang.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * 装饰资产状态。
@@ -8,13 +8,15 @@ import org.springframework.lang.Nullable;
  * <p>状态流转：
  * <pre>
  * draft -&gt; active
- * draft -&gt; deleted（物理删除，仅未授予过）
  * active -&gt; disabled
  * active -&gt; archived
  * disabled -&gt; active
  * disabled -&gt; archived
  * archived -&gt; disabled（取消归档）
  * </pre>
+ *
+ * <p>删除不是状态：任何状态均可删除（级联撤销全部有效授予，见
+ * {@code DecorationAssetService#deleteAsset}）；仅 UC 投稿删除限草稿状态。
  */
 public enum DecorationStatus {
 

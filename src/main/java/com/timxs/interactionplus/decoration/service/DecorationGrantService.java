@@ -1,5 +1,6 @@
 package com.timxs.interactionplus.decoration.service;
 
+import static run.halo.app.extension.ExtensionUtil.isDeleted;
 import static run.halo.app.extension.index.query.Queries.and;
 import static run.halo.app.extension.index.query.Queries.equal;
 import static run.halo.app.extension.index.query.Queries.isNull;
@@ -9,6 +10,7 @@ import com.timxs.interactionplus.api.GrantableDecoration;
 import com.timxs.interactionplus.api.RevokeResult;
 import com.timxs.interactionplus.decoration.constants.DecorationStatus;
 import com.timxs.interactionplus.core.constants.ErrorCodes;
+import com.timxs.interactionplus.core.constants.InteractionPlusConst;
 import com.timxs.interactionplus.core.exception.InteractionPlusException;
 import com.timxs.interactionplus.decoration.extension.UserDecorationAsset;
 import com.timxs.interactionplus.decoration.extension.UserDecorationGrant;
@@ -24,6 +26,7 @@ import com.timxs.interactionplus.core.support.ListRequestSupport;
 import com.timxs.interactionplus.core.support.NameGenerator;
 import com.timxs.interactionplus.core.support.RoleUtils;
 import com.timxs.interactionplus.core.support.SecurityUtils;
+import com.timxs.interactionplus.identity.support.PublicIdentityCache;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -72,6 +75,9 @@ public class DecorationGrantService {
     private final DecorationProfileService profileService;
     private final DecorationMetadataService metadataService;
     private final InteractionPlusNotificationService notificationService;
+    // 授予 / 续期 / 撤销直接改变公开身份的装饰计数与展示有效期，变更后即时失效该用户缓存，
+    // 不等 TTL（撤销触发的佩戴清理另有 removeAssetFromProfile 内的失效，这里覆盖其余路径）
+    private final PublicIdentityCache publicIdentityCache;
 
     /**
      * 单实例内按 userName 串行化授予临界区（检查 → 写入），消除同实例并发授予的检查竞态。
@@ -195,6 +201,13 @@ public class DecorationGrantService {
             throw InteractionPlusException.badRequest(ErrorCodes.VALIDATION_FAILED,
                 "参数校验失败", "用户与装饰均不能为空。");
         }
+        // 手动路径设组合上限（防御纵深：串行 concatMap 处理超大笛卡尔积会长占连接）；
+        // 角色快照路径（grantByRoleSnapshot）按站点角色规模展开，天然不设限
+        if (userNames.size() * assetNames.size() > InteractionPlusConst.GRANT_BATCH_PAIR_LIMIT) {
+            throw InteractionPlusException.badRequest(ErrorCodes.BATCH_LIMIT_EXCEEDED,
+                "批量授予超限", "单次授予「用户 × 装饰」组合最多 "
+                + InteractionPlusConst.GRANT_BATCH_PAIR_LIMIT + " 对，请分批操作。");
+        }
         String reason = param.getReason();
         Instant expiresAt = param.getExpiresAt();
         validateExpiresAt(expiresAt);
@@ -282,16 +295,25 @@ public class DecorationGrantService {
 
     private Mono<BatchGrantResult> processPairs(List<Pair> pairs, Map<String, UserDecorationAsset> assets,
         String grantType, String reason, Instant expiresAt, String operator) {
-        return Flux.fromIterable(pairs)
-            .concatMap(pair -> processOne(pair, assets, grantType, reason, expiresAt, operator))
-            .collectList()
-            .flatMap(outcomes -> buildResultAndNotify(outcomes, assets, operator));
+        var userNames = pairs.stream().map(Pair::user).distinct().toList();
+        // 目标用户存在性前置校验（与 externalGrant 的 USER_NOT_FOUND 口径一致）：
+        // 不存在的用户按对报失败，不产出悬挂授予与幽灵用户的通知订阅；
+        // 取到的 userMap 顺传结果聚合，避免二次批量取 User
+        return loadUsers(userNames).flatMap(userMap ->
+            Flux.fromIterable(pairs)
+                .concatMap(pair -> userMap.containsKey(pair.user())
+                    ? processOne(pair, assets, grantType, reason, expiresAt, operator)
+                    : Mono.just(Outcome.failed(pair, ErrorCodes.USER_NOT_FOUND)))
+                .collectList()
+                .flatMap(outcomes -> buildResultAndNotify(outcomes, assets, operator, userMap)));
     }
 
     private Mono<Outcome> processOne(Pair pair, Map<String, UserDecorationAsset> assets,
         String grantType, String reason, Instant expiresAt, String operator) {
         var asset = assets.get(pair.asset());
-        if (asset == null) {
+        // 预载 map 用裸 fetch 不过滤软删除：与新建路径的复核同口径，
+        // 软删除中的资产续期 / 新建一律 NOT_FOUND（否则续期分支会给已删资产续命）
+        if (asset == null || isDeleted(asset)) {
             return Mono.just(Outcome.failed(pair, ErrorCodes.ASSET_NOT_FOUND));
         }
         if (!asset.isActive()) {
@@ -315,6 +337,11 @@ public class DecorationGrantService {
         Instant expiresAt, String operator) {
         return client.fetch(UserDecorationAsset.class, pair.asset())
             .flatMap(asset -> {
+                // 软删除中（已打 deletionTimestamp）的资产 fetch 仍可取到，
+                // 不拦截会漏过级联撤销、产出指向已删资产的悬挂授予
+                if (isDeleted(asset)) {
+                    return Mono.just(Outcome.failed(pair, ErrorCodes.ASSET_NOT_FOUND));
+                }
                 if (!asset.isActive()) {
                     return Mono.just(Outcome.failed(pair, ErrorCodes.ASSET_NOT_ACTIVE));
                 }
@@ -342,6 +369,7 @@ public class DecorationGrantService {
         }
         spec.setExpiresAt(expiresAt);
         return client.update(existing)
+            .doOnNext(updated -> publicIdentityCache.evict(pair.user()))
             .map(updated -> Outcome.renewed(pair, updated.getMetadata().getName()))
             .onErrorResume(error -> Mono.just(Outcome.failed(pair, "GRANT_ERROR")));
     }
@@ -390,16 +418,13 @@ public class DecorationGrantService {
         spec.setGrantedBy(grantedBy);
         spec.setGrantedAt(Instant.now());
         grant.setSpec(spec);
-        return client.create(grant);
+        return client.create(grant)
+            .doOnNext(created -> publicIdentityCache.evict(userName));
     }
 
     private Mono<BatchGrantResult> buildResultAndNotify(List<Outcome> outcomes,
-        Map<String, UserDecorationAsset> assets, String operator) {
-        var userNames = outcomes.stream()
-            .map(outcome -> outcome.pair().user())
-            .distinct()
-            .toList();
-        return loadUsers(userNames).flatMap(userMap -> {
+        Map<String, UserDecorationAsset> assets, String operator, Map<String, User> userMap) {
+        return Mono.defer(() -> {
             var result = new BatchGrantResult();
             for (Outcome outcome : outcomes) {
                 var user = outcome.pair().user();
@@ -474,6 +499,9 @@ public class DecorationGrantService {
                             String userName = latest.getSpec().getUserName();
                             String assetName = latest.getSpec().getAssetName();
                             return client.update(latest)
+                                // 其他来源仍持有时 cleanupAfterRevoke 不清佩戴也不失效缓存，
+                                // 但展示有效期（取各来源最晚）可能已变，这里统一失效
+                                .doOnNext(updated -> publicIdentityCache.evict(userName))
                                 .flatMap(updated ->
                                     cleanupAfterRevoke(userName, assetName, reason, wasActive)
                                         .thenReturn(updated));
@@ -559,6 +587,11 @@ public class DecorationGrantService {
         }
         return client.fetch(UserDecorationAsset.class, decorationName)
             .flatMap(asset -> {
+                // 软删除中的装饰视为不存在（续期分支同样拦截，与新建复核同口径）
+                if (isDeleted(asset)) {
+                    return Mono.just(GrantResult.of(
+                        GrantResult.Status.DECORATION_NOT_FOUND));
+                }
                 if (!asset.isActive()) {
                     return Mono.just(GrantResult.of(
                         GrantResult.Status.DECORATION_INACTIVE));
@@ -596,6 +629,11 @@ public class DecorationGrantService {
         String reason) {
         return client.fetch(UserDecorationAsset.class, decorationName)
             .flatMap(asset -> {
+                // 同 createAfterRecheck：软删除中的资产视为不存在，避免悬挂授予
+                if (isDeleted(asset)) {
+                    return Mono.just(GrantResult.of(
+                        GrantResult.Status.DECORATION_NOT_FOUND));
+                }
                 if (!asset.isActive()) {
                     return Mono.just(GrantResult.of(
                         GrantResult.Status.DECORATION_INACTIVE));
@@ -628,6 +666,7 @@ public class DecorationGrantService {
         }
         own.getSpec().setExpiresAt(expiresAt);
         return client.update(own)
+            .doOnNext(updated -> publicIdentityCache.evict(own.getSpec().getUserName()))
             .thenReturn(GrantResult.renewed(grantName));
     }
 
@@ -660,6 +699,7 @@ public class DecorationGrantService {
                     // revokedBy 语义为操作者用户名，外部来源暂无操作者概念（sourcePlugin 已在同记录）
                     own.markRevoked(null, reason);
                     return client.update(own)
+                        .doOnNext(updated -> publicIdentityCache.evict(userName))
                         .then(cleanupAfterRevoke(userName, decorationName, reason, true))
                         .thenReturn(RevokeResult.of(
                             RevokeResult.Status.REVOKED));

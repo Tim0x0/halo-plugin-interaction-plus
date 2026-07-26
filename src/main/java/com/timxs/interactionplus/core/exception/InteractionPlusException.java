@@ -1,8 +1,8 @@
 package com.timxs.interactionplus.core.exception;
 
 import java.net.URI;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
-import org.springframework.lang.Nullable;
 import org.springframework.web.ErrorResponseException;
 
 /**
@@ -50,6 +50,7 @@ public class InteractionPlusException extends ErrorResponseException {
 
     public static InteractionPlusException unprocessable(String code, String title,
         String detail) {
-        return new InteractionPlusException(HttpStatus.UNPROCESSABLE_ENTITY, code, title, detail);
+        // RFC 9110 更名：UNPROCESSABLE_ENTITY 在 Spring 6.2+ 废弃，状态码仍为 422
+        return new InteractionPlusException(HttpStatus.UNPROCESSABLE_CONTENT, code, title, detail);
     }
 }

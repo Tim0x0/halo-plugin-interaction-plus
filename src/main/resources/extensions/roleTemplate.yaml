@@ -19,12 +19,14 @@ metadata:
     rbac.authorization.halo.run/ui-permissions: |
       ["plugin:interaction-plus:decoration:submit"]
 rules:
+  # verbs 按实际路由精确声明（最小权限）：新增路由时须同步扩这里，不留静默放行面
   - apiGroups: ["uc.api.interaction-plus.timxs.com"]
     resources: ["submissions"]
     verbs: ["create", "get", "list", "update", "delete"]
+  # GET /metadata 无 name 段，按 Halo RequestInfoFactory 归 list
   - apiGroups: ["uc.api.interaction-plus.timxs.com"]
     resources: ["metadata"]
-    verbs: ["get", "list"]
+    verbs: ["list"]
 ---
 # ── 管理装饰资产（decoration:manage）────────────────────────────────
 apiVersion: v1alpha1
@@ -39,22 +41,31 @@ metadata:
     rbac.authorization.halo.run/ui-permissions: |
       ["plugin:interaction-plus:decoration:manage"]
 rules:
-  # 动作端点为子资源风格（/{name}/activate 等），RBAC 需显式声明子资源
+  # 动作端点为子资源风格（/{name}/activate 等），RBAC 需显式声明子资源；
+  # verbs 按实际路由精确声明（最小权限）：新增路由时须同步扩这里
+  - apiGroups: ["console.api.interaction-plus.timxs.com"]
+    resources: ["assets"]
+    verbs: ["create", "get", "list", "update", "delete"]
+  # 动作子资源均为 POST（verb=create）
   - apiGroups: ["console.api.interaction-plus.timxs.com"]
     resources:
-      - "assets"
       - "assets/activate"
       - "assets/disable"
       - "assets/archive"
       - "assets/unarchive"
+    verbs: ["create"]
+  # 计数子资源均为带 name 的 GET（verb=get）
+  - apiGroups: ["console.api.interaction-plus.timxs.com"]
+    resources:
       - "assets/active-grant-count"
-      - "categories"
       - "categories/usage-count"
-      - "tags"
       - "tags/usage-count"
-      - "rarities"
       - "rarities/usage-count"
-    verbs: ["create", "get", "list", "update", "delete"]
+    verbs: ["get"]
+  # 元数据三表无单查路由（GET 仅集合）
+  - apiGroups: ["console.api.interaction-plus.timxs.com"]
+    resources: ["categories", "tags", "rarities"]
+    verbs: ["create", "list", "update", "delete"]
 ---
 # ── 授予与撤销装饰（decoration:grant）───────────────────────────────
 apiVersion: v1alpha1
@@ -69,14 +80,18 @@ metadata:
     rbac.authorization.halo.run/ui-permissions: |
       ["plugin:interaction-plus:decoration:grant"]
 rules:
-  # 动作端点为子资源风格（/-/grant-by-role-snapshot、/-/revoke-held、/{name}/revoke），RBAC 需显式声明子资源
+  # 动作端点为子资源风格（/-/grant-by-role-snapshot、/-/revoke-held、/{name}/revoke），
+  # RBAC 需显式声明子资源；verbs 按实际路由精确声明（无单查 / PUT / DELETE 路由）
+  - apiGroups: ["console.api.interaction-plus.timxs.com"]
+    resources: ["grants"]
+    verbs: ["create", "list"]
+  # 动作子资源均为 POST（verb=create）
   - apiGroups: ["console.api.interaction-plus.timxs.com"]
     resources:
-      - "grants"
       - "grants/grant-by-role-snapshot"
       - "grants/revoke"
       - "grants/revoke-held"
-    verbs: ["create", "get", "list", "update", "delete"]
+    verbs: ["create"]
   # 授予时需要读取装饰资产用于选择
   - apiGroups: ["console.api.interaction-plus.timxs.com"]
     resources: ["assets"]
@@ -89,6 +104,8 @@ metadata:
   name: interaction-plus-role-decoration-user
   labels:
     halo.run/role-template: "true"
+    # 聚合给全体登录用户的模板按官方惯例隐藏，避免角色管理界面出现人人已有的冗余项
+    halo.run/hidden: "true"
     rbac.authorization.halo.run/aggregate-to-authenticated: "true"
   annotations:
     rbac.authorization.halo.run/module: "互动增强"
@@ -96,9 +113,14 @@ metadata:
     rbac.authorization.halo.run/ui-permissions: |
       ["plugin:interaction-plus:decoration:equip"]
 rules:
+  # GET /inventory、/profile、/metadata 均无 name 段归 list；PUT /profile 与
+  # PUT /profile/visibility 按两段式解析均落在 profile+update（visibility 是 name 非子资源）
   - apiGroups: ["uc.api.interaction-plus.timxs.com"]
-    resources: ["inventory", "profile", "profile/visibility", "metadata"]
-    verbs: ["get", "list", "update"]
+    resources: ["inventory", "metadata"]
+    verbs: ["list"]
+  - apiGroups: ["uc.api.interaction-plus.timxs.com"]
+    resources: ["profile"]
+    verbs: ["list", "update"]
 ---
 # ── 管理互动配置（system:manage）────────────────────────────────────
 apiVersion: v1alpha1
@@ -113,9 +135,10 @@ metadata:
     rbac.authorization.halo.run/ui-permissions: |
       ["plugin:interaction-plus:system:manage"]
 rules:
+  # 无单查路由（GET 仅集合），verbs 按实际路由精确声明
   - apiGroups: ["console.api.interaction-plus.timxs.com"]
     resources: ["identity-mark-mappings"]
-    verbs: ["create", "get", "list", "update", "delete"]
+    verbs: ["create", "list", "update", "delete"]
 ---
 # ── 公开身份 API（默认聚合给游客与登录用户）─────────────────────────
 apiVersion: v1alpha1
@@ -131,6 +154,11 @@ metadata:
     rbac.authorization.halo.run/module: "互动增强"
     rbac.authorization.halo.run/display-name: "公开身份展示"
 rules:
+  # 按实际路由精确声明：GET /identity/{u} 与 GET /identity/{u}/decorations 为 get，
+  # POST /identities 为 create；无 list 路由
   - apiGroups: ["api.interaction-plus.timxs.com"]
-    resources: ["identity", "identities", "identity/decorations"]
-    verbs: ["get", "list", "create"]
+    resources: ["identity", "identity/decorations"]
+    verbs: ["get"]
+  - apiGroups: ["api.interaction-plus.timxs.com"]
+    resources: ["identities"]
+    verbs: ["create"]

@@ -109,6 +109,9 @@ public class UcDecorationEndpoint implements CustomEndpoint {
         // requireUser 仅做登录拦截（SecurityUtils 匿名返回哨兵值而非空链），投稿者由 service 内部取当前用户
         return requireUser()
             .then(request.bodyToMono(DecorationAssetParam.class))
+            // 空请求体时 bodyToMono 为空链，不拦截会以 200 空响应静默返回
+            .switchIfEmpty(Mono.error(InteractionPlusException.badRequest(
+                ErrorCodes.VALIDATION_FAILED, "请求体为空", "请求体不能为空。")))
             .flatMap(assetService::createSubmission)
             .flatMap(asset -> ServerResponse.ok().bodyValue(asset));
     }
@@ -124,6 +127,8 @@ public class UcDecorationEndpoint implements CustomEndpoint {
         var name = request.pathVariable("name");
         return requireUser().flatMap(userName ->
             request.bodyToMono(DecorationAssetParam.class)
+                .switchIfEmpty(Mono.error(InteractionPlusException.badRequest(
+                    ErrorCodes.VALIDATION_FAILED, "请求体为空", "请求体不能为空。")))
                 .flatMap(param -> assetService.updateSubmission(userName, name, param))
                 .flatMap(asset -> ServerResponse.ok().bodyValue(asset)));
     }

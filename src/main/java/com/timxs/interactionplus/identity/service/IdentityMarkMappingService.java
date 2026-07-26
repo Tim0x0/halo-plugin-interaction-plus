@@ -9,6 +9,7 @@ import com.timxs.interactionplus.core.exception.InteractionPlusException;
 import com.timxs.interactionplus.identity.extension.UserIdentityMarkMapping;
 import com.timxs.interactionplus.identity.model.IdentityMarkMappingParam;
 import com.timxs.interactionplus.identity.model.IdentityMarkMappingView;
+import com.timxs.interactionplus.identity.support.PublicIdentityCache;
 import com.timxs.interactionplus.core.support.ListRequestSupport;
 import com.timxs.interactionplus.core.support.NameGenerator;
 import com.timxs.interactionplus.core.support.RoleUtils;
@@ -42,6 +43,7 @@ public class IdentityMarkMappingService {
         Sort.Order.desc("metadata.creationTimestamp"));
 
     private final ReactiveExtensionClient client;
+    private final PublicIdentityCache publicIdentityCache;
 
     /**
      * 分页列出映射，并标记角色存在性与角色显示名（当页角色名去重后一次性查询，避免逐条 fetch）。
@@ -91,7 +93,9 @@ public class IdentityMarkMappingService {
                 applyParam(spec, param);
                 mapping.setSpec(spec);
                 return client.create(mapping);
-            }));
+            }))
+            // 映射影响全体用户的身份标识，变更后全量失效，避免脏读至 TTL
+            .doOnNext(created -> publicIdentityCache.clearAll());
     }
 
     public Mono<UserIdentityMarkMapping> updateMapping(String name,
@@ -99,19 +103,21 @@ public class IdentityMarkMappingService {
         validate(param, false);
         return client.fetch(UserIdentityMarkMapping.class, name)
             .switchIfEmpty(Mono.error(InteractionPlusException.notFound(
-                ErrorCodes.VALIDATION_FAILED, "映射不存在", "身份标识映射不存在或已被删除。")))
+                ErrorCodes.MAPPING_NOT_FOUND, "映射不存在", "身份标识映射不存在或已被删除。")))
             .flatMap(mapping -> {
                 // roleName 创建后不可修改，忽略 param.roleName
                 applyParam(mapping.getSpec(), param);
                 return client.update(mapping);
-            });
+            })
+            .doOnNext(updated -> publicIdentityCache.clearAll());
     }
 
     public Mono<Void> deleteMapping(String name) {
         return client.fetch(UserIdentityMarkMapping.class, name)
             .switchIfEmpty(Mono.error(InteractionPlusException.notFound(
-                ErrorCodes.VALIDATION_FAILED, "映射不存在", "身份标识映射不存在或已被删除。")))
-            .flatMap(mapping -> client.delete(mapping).then());
+                ErrorCodes.MAPPING_NOT_FOUND, "映射不存在", "身份标识映射不存在或已被删除。")))
+            .flatMap(mapping -> client.delete(mapping).then())
+            .doOnSuccess(ignored -> publicIdentityCache.clearAll());
     }
 
     private void applyParam(UserIdentityMarkMapping.Spec spec, IdentityMarkMappingParam param) {

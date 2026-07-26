@@ -29,6 +29,12 @@ public final class ErrorCodes {
     /** 授予记录不存在。 */
     public static final String GRANT_NOT_FOUND = "GRANT_NOT_FOUND";
 
+    /** 元数据（分类 / 标签 / 稀有度）不存在。 */
+    public static final String METADATA_NOT_FOUND = "METADATA_NOT_FOUND";
+
+    /** 身份标识映射不存在。 */
+    public static final String MAPPING_NOT_FOUND = "MAPPING_NOT_FOUND";
+
     /** 佩戴档案版本冲突。 */
     public static final String PROFILE_CONFLICT = "PROFILE_CONFLICT";
 
@@ -37,6 +43,9 @@ public final class ErrorCodes {
 
     /** Halo 角色不存在。 */
     public static final String ROLE_NOT_FOUND = "ROLE_NOT_FOUND";
+
+    /** Halo 用户不存在。 */
+    public static final String USER_NOT_FOUND = "USER_NOT_FOUND";
 
     /** 批量请求超过上限。 */
     public static final String BATCH_LIMIT_EXCEEDED = "BATCH_LIMIT_EXCEEDED";

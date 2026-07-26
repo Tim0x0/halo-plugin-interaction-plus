@@ -1,7 +1,7 @@
 package com.timxs.interactionplus.decoration.constants;
 
 import com.timxs.interactionplus.core.constants.InteractionPlusConst;
-import org.springframework.lang.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * 佩戴槽位。

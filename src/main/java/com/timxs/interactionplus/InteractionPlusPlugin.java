@@ -53,8 +53,9 @@ public class InteractionPlusPlugin extends BasePlugin {
         // 自动 setupWith+start、停止时 dispose，无需在此手动启停。
         // 授予记录保留清理由 GrantRetentionService 的 @Scheduled 自动驱动
         // （插件上下文经 InteractionPlusConfiguration 的 @EnableScheduling 开启）。
-        // 首次启动创建默认稀有度（幂等）
-        bootstrapService.initializeDefaults().subscribe();
+        // 首次启动创建默认稀有度（幂等）。错误已由链上 doOnError 记录日志，
+        // 这里给空错误消费者兜底，避免无参 subscribe 触发 onErrorDropped 二次打印
+        bootstrapService.initializeDefaults().subscribe(null, error -> { });
     }
 
     @Override

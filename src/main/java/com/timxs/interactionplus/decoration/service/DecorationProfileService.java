@@ -28,6 +28,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -153,9 +154,17 @@ public class DecorationProfileService {
         return client.fetch(UserDecorationProfile.class, NameGenerator.profileName(userName))
             .flatMap(profile -> buildProfileView(userName, profile.getSpec()))
             .switchIfEmpty(Mono.just(new ProfileView()))
-            .flatMap(view -> publicIdentityService.resolveIdentityMarks(userName)
-                .doOnNext(view::setIdentityMarks)
-                .thenReturn(view));
+            .flatMap(view -> attachIdentityMarks(userName, view));
+    }
+
+    /**
+     * ProfileView 统一附带当前生效的身份标识（只读展示）。读取与保存路径共用——
+     * 保存响应缺失该字段时，前端以响应回写状态会把已展示的标识清空。
+     */
+    private Mono<ProfileView> attachIdentityMarks(String userName, ProfileView view) {
+        return publicIdentityService.resolveIdentityMarks(userName)
+            .doOnNext(view::setIdentityMarks)
+            .thenReturn(view);
     }
 
     private Mono<ProfileView> buildProfileView(String userName, UserDecorationProfile.Spec spec) {
@@ -268,9 +277,14 @@ public class DecorationProfileService {
             .onErrorMap(OptimisticLockingFailureException.class, error ->
                 InteractionPlusException.conflict(ErrorCodes.PROFILE_CONFLICT, "佩戴档案冲突",
                     "佩戴档案已被其它操作修改，请刷新后重试。"))
+            // 并发首次保存时创建分支撞确定性主键名（profile-<user>），同样归为 409 冲突（重试即自愈）
+            .onErrorMap(DuplicateKeyException.class, error ->
+                InteractionPlusException.conflict(ErrorCodes.PROFILE_CONFLICT, "佩戴档案冲突",
+                    "佩戴档案已被其它操作修改，请刷新后重试。"))
             // 佩戴 / 可见性变更影响公开展示，清理该用户的 Public identity 缓存
             .doOnNext(saved -> publicIdentityCache.evict(userName))
-            .flatMap(saved -> buildProfileView(userName, saved.getSpec()));
+            .flatMap(saved -> buildProfileView(userName, saved.getSpec()))
+            .flatMap(view -> attachIdentityMarks(userName, view));
     }
 
     private void applyParam(UserDecorationProfile.Spec spec, String userName,
