@@ -44,7 +44,7 @@
 <hip-user-avatar user-name="alice" size="40px"></hip-user-avatar>
 ```
 
-- `size`：尺寸（默认 `40px`），头像框自动跟随容器缩放。
+- `size`：尺寸，仅接受「数字 + `px` / `em` / `rem` / `%`」（如 `40px`、`2.5em`）；默认 `40px`，非法值安全回落默认值。头像框自动跟随容器缩放。
 
 ### hip-user-identity：身份行
 
@@ -56,11 +56,13 @@
 
 ### hip-user-card：用户悬浮卡片
 
-组合头像、身份、称号、名片背景、互动统计、勋章展柜与简介的大卡（**尺寸恒定 560×296**）：
+组合头像、身份、称号、名片背景、互动统计、勋章展柜与简介的大卡（**桌面端尺寸恒定 560×296**）：
 整卡背景全彩展示（顶部 60px 露出带）+ 半透明内容层；卡片高度不随佩戴内容浮动（全站名片规格统一，
 背景素材按 560:296 比例居中裁切恒定，推荐素材 1120×592）；个人说明区固定三行（空值占位）；
 数据行内置文章 / 评论 / 勋章计数，并自动接入其他插件贡献的统计项。
-桌面 hover / focus 显示，移动端 tap 显示，失焦 / 外点 / Esc 关闭，靠近视口右缘自动翻转防溢出：
+**点击触发元素显示 / 再点关闭**（键盘 Enter/Space 等效），外点 / Esc 关闭；
+桌面端锚定触发元素展开并在水平方向自动钳制在视口内，窄屏（≤640px）切换为固定全宽卡 +
+半透明遮罩、高度随内容自适应（上限 85vh 内部滚动）、页面滚动即关闭：
 
 ```html
 <hip-user-card user-name="alice">
@@ -99,8 +101,8 @@ Halo 评论区由主题渲染。在主题模板里把用户名包进组件即可
 
 | 方法 | 返回 | 说明 |
 |---|---|---|
-| `${interactionPlus.getIdentity('alice')}` | 身份对象 | 同[公开 HTTP API](#公开-http-api) 的 `/identity` 结构（基础信息 + 佩戴装饰 + 身份标识 + 展示配置） |
-| `${interactionPlus.getDecorations('alice')}` | 装饰数组 | 同 `/identity/{u}/decorations`（装饰墙，尊重公开开关） |
+| `${interactionPlus.getIdentity('alice')}` | 身份对象 | 同[公开 HTTP API](#公开-http-api) 的 `/identity` 结构（基础信息 + 佩戴装饰 + 身份标识 + 互动统计 + 展示配置） |
+| `${interactionPlus.getDecorations('alice')}` | 装饰数组 | 同 `/identity/{u}/decorations`（装饰墙，尊重公开开关）；差异：用户不存在或被禁用时 Finder 返回空数组（模板无需判空报错），HTTP API 返回 404 |
 
 > Finder 与公开 HTTP API **同源**（共用 `PublicIdentityService`），返回结构完全一致，只是出口不同：Finder 给模板 SSR，HTTP API 给前端 fetch。返回字段详见[公开 HTTP API](#公开-http-api) 的响应示例。
 
@@ -138,9 +140,9 @@ Base：`/apis/api.interaction-plus.timxs.com/v1alpha1`（游客可访问）。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/identity/{userName}` | 单用户公开身份：当前佩戴的装扮 + 身份标识 + 展示密度配置 |
-| POST | `/identities` | 批量，body `{"userNames":["a","b"]}`，单次最多 50、自动去重 |
-| GET | `/identity/{userName}/decorations` | **装饰墙**：该用户获得的全部有效装饰（自包含完整信息；尊重用户「公开装扮墙」开关，关闭则返回空数组） |
+| GET | `/identity/{userName}` | 单用户公开身份：当前佩戴的装扮 + 身份标识 + 互动统计 + 展示密度配置 |
+| POST | `/identities` | 批量，body `{"userNames":["a","b"]}`，单次最多 50、自动去重；响应 `{"items":[身份对象…],"skipped":["查无或不可用的用户名…"]}` |
+| GET | `/identity/{userName}/decorations` | **装饰墙**：该用户获得的全部有效装饰（自包含完整信息；尊重用户「公开装扮墙」开关，关闭则返回空数组；用户不存在或被禁用时 404，与 `/identity/{userName}` 口径一致） |
 
 `/identity/{userName}` 返回（节选）：
 
@@ -150,6 +152,7 @@ Base：`/apis/api.interaction-plus.timxs.com/v1alpha1`（游客可访问）。
   "displayName": "Alice",
   "avatar": "https://.../avatar.png",
   "bio": "……",
+  "registeredAt": "2021-03-01T00:00:00Z",
   "identityMarks": [{ "displayName": "管理员", "icon": "...", "color": "#f00" }],
   "decorations": {
     "avatarFrame": { "assetName": "...", "type": "avatar_frame", "url": "..." },
@@ -159,9 +162,17 @@ Base：`/apis/api.interaction-plus.timxs.com/v1alpha1`（游客可访问）。
     "cardBackground": { "type": "card_background", "url": "..." },
     "nameStyle": { "type": "name_style", "nameStyle": { "mode": "gradient", "colors": ["#...","#..."] } }
   },
-  "display": { "identityLineIdentityLimit": 1, "userCardShowcaseBadgeLimit": 3, "userCardIdentityLimit": 3 }
+  "stats": {
+    "posts": 128,
+    "comments": 356,
+    "decorations": { "total": 12, "badge": 9, "avatarFrame": 1, "title": 1, "nameStyle": 1, "cardBackground": 0 },
+    "extras": [{ "source": "some-qa-plugin", "key": "accepted", "label": "采纳", "value": "23" }]
+  },
+  "display": { "identityLineShowPrimaryBadge": true, "identityLineIdentityLimit": 1, "userCardShowcaseBadgeLimit": 3, "userCardIdentityLimit": 3 }
 }
 ```
+
+**互动统计 `stats`**（用户悬浮卡数据行与「加入时间」的数据源）：`posts` / `comments` 为公开口径计数（已发布文章、已审核评论）；`stats.decorations` 为各类装扮的持有计数，**为 `null` 表示用户关闭了公开装扮墙**（此时请勿显示勋章计数）；`extras` 为其他插件贡献的统计项（`source` 是来源插件 id，`value` 已格式化、原样展示即可）。
 
 **称号双形态**：`titleMode` 为 `text` 时按 `titleColor` / `titleBackground`（可选 `titleBackgroundSecondary`，两者形成 135° 渐变）渲染文字牌；为 `image` 时图片地址在 `url`，`titleText` 作为替代文本与加载失败时的回落文案。整图称号建议按场景限高：行内（随文字行）约 `20px`、卡片等独立展示位约 `32px`，并设最大宽度防超宽横条破坏排版——`hip-user-*` 组件已内置该约束（`max-height` + `max-width` 双上限，图按自身比例取最优尺寸，可用 `--hip-title-img-height` / `--hip-title-img-max-width` 覆盖），自渲染的主题请自行限制。
 
@@ -201,7 +212,7 @@ Base：`/apis/api.interaction-plus.timxs.com/v1alpha1`（游客可访问）。
 | `--hip-card-text-muted` | `#8b949e` | 弱文字色（数据标签、加入时间、空说明占位） |
 | `--hip-card-line` | `rgba(31,35,40,.1)` | 分隔线与「+N」虚线格 |
 | `--hip-card-slot-bg` / `--hip-card-slot-hover-bg` | `rgba(31,35,40,.045)` / `.1` | 勋章展柜收藏格底色 / 悬停底色 |
-| `--hip-badge-size` | `18px` | 名字行主勋章尺寸 |
+| `--hip-badge-size` | 卡片 `20px` / 行内 `1.25em` | 名字行主勋章尺寸（默认按场景分化：卡片固定、行内随正文字号缩放——1.25em 低于正文行高，任何字号下不撑行；主题显式设置则两场景同值） |
 | `--hip-title-img-height` | `32px` | 整图称号最大高度（max-height，图按自身比例在双上限内取最优尺寸） |
 | `--hip-title-img-max-width` | `100%` | 整图称号最大宽度（信息列宽度即上限) |
 
@@ -219,7 +230,7 @@ Base：`/apis/api.interaction-plus.timxs.com/v1alpha1`（游客可访问）。
 }
 ```
 
-**`hip-user-identity`**：`--hip-identity-gap`(`4px`)、`--hip-badge-size`、`--hip-text-color`、`--hip-muted-color`、`--hip-title-radius`(`4px`，标识 / 称号牌圆角，与卡片元素圆角同档)、`--hip-title-img-height`(`20px`，最大高度，行内与文字行高对齐)、`--hip-title-img-max-width`(`200px`，保险丝，约 10:1 宽高比上限)。
+**`hip-user-identity`**：`--hip-identity-gap`(`4px`)、`--hip-badge-size`(行内默认 `1.25em`，与标识图标同尺寸)、`--hip-text-color`、`--hip-muted-color`、`--hip-title-radius`(`4px`，标识 / 称号牌圆角，与卡片元素圆角同档)、`--hip-title-img-height`(行内默认 `1.25em`——16px 正文下即 20px，随正文字号缩放不撑行)、`--hip-title-img-max-width`(`200px`，保险丝，约 10:1 宽高比上限)。
 
 **`hip-user-avatar`**：用 `size` 属性控制尺寸。
 

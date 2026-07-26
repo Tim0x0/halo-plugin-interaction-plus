@@ -120,12 +120,12 @@ RevokeResult        { status }
 | `GRANTED` | 已新发放（他源是否发过与此无关） |
 | `RENEWED` | 已持有你发的授予，本次已延长有效期（仅新值更晚才刷新） |
 | `ALREADY_HELD` | 已持有你发的授予且本次有效期不更晚，幂等跳过 |
-| `DECORATION_NOT_FOUND` | `decorationName` 不存在 |
+| `DECORATION_NOT_FOUND` | `decorationName` 不存在（含正在删除中的装饰） |
 | `DECORATION_INACTIVE` | 装饰未启用 |
 | `DECORATION_NOT_EXTERNALLY_GRANTABLE` | 该稀有度被站长禁止外发 |
 | `USER_NOT_FOUND` | 用户不存在 |
 
-便捷方法 `isHeld()`：`status ∈ {GRANTED, RENEWED, ALREADY_HELD}`，即「调用后用户持有该装饰」——只关心结果、不关心新发 / 续期 / 已持有区别时，用它做归一判断。
+便捷方法 `isHeld()`：`status ∈ {GRANTED, RENEWED, ALREADY_HELD}`，即「调用后用户持有该装饰」——只关心结果、不关心新发 / 续期 / 已持有区别时，用它做归一判断。`grantName` 仅在这三个持有态有值（授予记录标识），其余状态为 `null`。
 
 撤销结果 `RevokeResult.status`：
 
@@ -216,10 +216,24 @@ PublicIdentity {
   registeredAt    Instant?          注册时间
   identityMarks   List<IdentityMark>    身份标识（如「管理员」，按角色映射、无需佩戴），优先级降序
   decorations     WornDecorations       当前佩戴的装扮
+  stats           Stats                 互动统计（公开口径；含其他插件贡献项）
   display         DisplayConfig         展示密度配置快照
 }
 
 IdentityMark      { displayName, icon?, color?, priority }
+
+Stats {
+  posts           long                  公开文章数（已发布、可见性公开）
+  comments        long                  公开评论数（已审核、未隐藏）
+  decorations     DecorationCounts?     装扮持有计数；null = 用户关闭了公开装扮墙
+  extras          List<ContributedStat> 其他插件经 UserStatContributor 贡献的统计项
+}
+
+DecorationCounts  { total, badge, avatarFrame, title, nameStyle, cardBackground }
+                  （有效授予且资产可用，按资产去重）
+
+ContributedStat   { source, key, label, value }
+                  source = 来源插件 id（系统按 ExtensionDefinition 归属盖章，不可自报）
 
 WornDecorations {                    槽位为 null = 未佩戴 / 已失效 / 该类型被站长停用
   avatarFrame     Decoration?       头像框
