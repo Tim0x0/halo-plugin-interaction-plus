@@ -6,7 +6,9 @@
  */
 :root {
   --hip-identity-gap: 4px;
-  --hip-badge-size: 18px;
+  /* --hip-badge-size 不设全局默认：主勋章尺寸按场景分化（行内 18 / 卡片 20，
+     各组件 var() 兜底承载，同整图称号 --hip-title-img-height 先例）；
+     主题显式设置该变量则两场景同值覆盖 */
   --hip-title-radius: 4px;
   --hip-card-width: 560px;
   --hip-card-radius: 12px;

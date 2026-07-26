@@ -43,10 +43,15 @@ function formatCount(value: number): string {
  * 风格 token：卡片零彩度（颜色只来自装扮），圆角两档 12/4，字重上限 600。
  * 尺寸恒定 560×296（设计稿 .dev/card-style-system.html 的满配自然高），不随内容浮动。
  *
- * 桌面 hover / focus 显示；移动端 tap 显示；失焦、外点、Esc 关闭；
- * 靠近视口右缘时自动右对齐防溢出。
+ * 全平台点击触发（主流论坛用户卡同款：再点触发元素即关闭；键盘 Enter/Space 等效）；
+ * 外点、Esc、窄屏滚动关闭。桌面端锚定触发元素并做视口钳制（shift 语义），
+ * 窄屏（≤640px）切换为固定全宽卡 + 半透明遮罩（移动端主流形态），
+ * 桌面端 560×296 恒定尺寸与内容布局不受影响。
  */
 export class HipUserCard extends HipElement {
+  /** 窄屏断点：达到即切换为固定全宽卡形态。 */
+  private static readonly MOBILE_QUERY = '(max-width: 640px)'
+
   private cardVisible = false
 
   private onDocumentClick = (event: MouseEvent) => {
@@ -61,6 +66,13 @@ export class HipUserCard extends HipElement {
     }
   }
 
+  /** 窄屏卡为覆盖态，滚动即关（移动端主流行为）。 */
+  private onWindowScroll = () => {
+    if (this.cardVisible) {
+      this.toggleCard(false)
+    }
+  }
+
   connectedCallback(): void {
     super.connectedCallback()
     document.addEventListener('click', this.onDocumentClick)
@@ -70,6 +82,11 @@ export class HipUserCard extends HipElement {
   disconnectedCallback(): void {
     document.removeEventListener('click', this.onDocumentClick)
     document.removeEventListener('keydown', this.onKeydown)
+    window.removeEventListener('scroll', this.onWindowScroll)
+  }
+
+  private isMobileViewport(): boolean {
+    return window.matchMedia(HipUserCard.MOBILE_QUERY).matches
   }
 
   private toggleCard(visible: boolean): void {
@@ -77,23 +94,39 @@ export class HipUserCard extends HipElement {
     if (visible) {
       this.updatePlacement()
     }
-    const card = this.shadow.querySelector('.card')
-    if (card) {
-      card.classList.toggle('card--visible', visible)
+    this.shadow.querySelector('.card')?.classList.toggle('card--visible', visible)
+    // 遮罩仅窄屏有视觉（CSS 媒体查询控制），类切换统一做，无需分支
+    this.shadow.querySelector('.cloak')?.classList.toggle('cloak--visible', visible)
+    if (visible && this.isMobileViewport()) {
+      window.addEventListener('scroll', this.onWindowScroll, { passive: true })
+    } else {
+      window.removeEventListener('scroll', this.onWindowScroll)
     }
   }
 
-  /** 视口右缘防溢出：右侧放不下且左侧放得下时，卡片改为右对齐展开。 */
+  /**
+   * 桌面端视口防溢出：卡片期望与触发元素左对齐，放不下时向视口内平移
+   * （Floating UI shift 的钳制语义：保持在视口内优先于贴住锚点）。
+   * 窄屏走 CSS 固定全宽模式，这里只需清掉桌面残留的内联偏移。
+   */
   private updatePlacement(): void {
-    const card = this.shadow.querySelector('.card')
+    const card = this.shadow.querySelector<HTMLElement>('.card')
     if (!card) {
       return
     }
+    if (this.isMobileViewport()) {
+      card.style.left = ''
+      return
+    }
     const rect = this.getBoundingClientRect()
-    const cardWidth = Math.min(560, window.innerWidth - 24)
-    const overflowRight = rect.left + cardWidth > window.innerWidth - 12
-    const fitsLeft = rect.right - cardWidth >= 12
-    card.classList.toggle('card--flip', overflowRight && fitsLeft)
+    const padding = 12
+    const cardWidth = card.offsetWidth || Math.min(560, window.innerWidth - padding * 2)
+    const clamped = Math.min(
+      Math.max(rect.left, padding),
+      window.innerWidth - cardWidth - padding,
+    )
+    // .card 的 left:0 基准即触发元素左缘，内联 left 写入相对钳制偏移
+    card.style.left = `${clamped - rect.left}px`
   }
 
   protected render(): void {
@@ -154,13 +187,15 @@ export class HipUserCard extends HipElement {
           .join('')}</div>`
       : ''
 
-    // 勋章展柜行：方形收藏格 + 「+N」计数格（勋章总数不可用时不渲染计数格）
+    // 勋章展柜行：方形收藏格 + 「+N」计数格（勋章总数不可用时不渲染计数格）。
+    // 「+N」以展柜非空为门槛：上限设 0（整柜关闭）或无佩戴时不渲染孤立计数格
+    // （同步 DecorationPreview 的 shelfMore 口径，两侧改动必须同步）
     const showcase = (identity.decorations?.badgeShowcase || [])
       .filter((badge) => badge?.url)
       .slice(0, showcaseLimit)
     const badgeTotal = stats?.decorations?.badge
     const moreCount =
-      typeof badgeTotal === 'number' && badgeTotal > showcase.length
+      showcase.length > 0 && typeof badgeTotal === 'number' && badgeTotal > showcase.length
         ? badgeTotal - showcase.length
         : 0
     const slotsHtml = showcase
@@ -207,16 +242,38 @@ export class HipUserCard extends HipElement {
           transform: translateY(4px);
           transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
         }
-        .card--flip {
-          left: auto;
-          right: 0;
-        }
-        .card--visible,
-        :host(:hover) .card,
-        :host(:focus-within) .card {
+        .card--visible {
           opacity: 1;
           visibility: visible;
           transform: translateY(0);
+        }
+        /* 窄屏遮罩：仅移动端全宽形态有视觉（媒体查询内定义），桌面恒不可见 */
+        .cloak {
+          display: none;
+        }
+        /* 窄屏（≤640px）：弃锚定，切固定全宽卡（移动端主流用户卡形态）——
+           贴顶、放开定高、内部滚动、半透明遮罩。桌面端布局与恒定尺寸不受此块影响 */
+        @media (max-width: 640px) {
+          .card {
+            position: fixed;
+            left: 12px !important; /* 压过桌面钳制写入的内联 left（如跨断点 resize 残留） */
+            right: 12px;
+            top: 12px;
+            width: auto;
+            max-width: none;
+            max-height: 85vh;
+            overflow-y: auto;
+          }
+          .surface {
+            height: auto;
+          }
+          .cloak--visible {
+            display: block;
+            position: fixed;
+            inset: 0;
+            z-index: 9998;
+            background: rgba(0, 0, 0, 0.5);
+          }
         }
         /* 背景层：装扮素材全彩 cover，水平垂直居中（主流锚定）。
            卡片总高恒定（surface 定高），cover 裁切基准 560×296 固定——
@@ -249,7 +306,7 @@ export class HipUserCard extends HipElement {
           flex-direction: column;
           gap: 9px;
         }
-        /* 头像 96：骑内容层上缘，上半浸在背景露出带里 */
+        /* 头像 96：骑内容层上缘，上半浸在背景露出带里（用户定稿值，勿擅调） */
         .avatar-wrap {
           position: absolute;
           left: 26px;
@@ -275,7 +332,7 @@ export class HipUserCard extends HipElement {
         }
         ${AVATAR_IMG_CSS}
         ${AVATAR_FRAME_CSS}
-        /* 名字块：让位头像（96 + 左 26 与间距） */
+        /* 名字块：让位头像（头像宽 96 + 16 间距） */
         .head {
           margin-left: 112px;
           min-height: 44px;
@@ -290,14 +347,15 @@ export class HipUserCard extends HipElement {
           flex-wrap: wrap;
         }
         .name {
-          font-size: 18px;
+          font-size: 20px;
           font-weight: 600;
           color: var(--hip-card-text, #24292f);
           line-height: 1.25;
         }
+        /* 卡片场景主勋章 20（行内场景 18，场景分化默认；⚠ 同步 DecorationPreview） */
         .badge {
-          width: var(--hip-badge-size, 18px);
-          height: var(--hip-badge-size, 18px);
+          width: var(--hip-badge-size, 20px);
+          height: var(--hip-badge-size, 20px);
           object-fit: contain;
         }
         .marks,
@@ -305,11 +363,13 @@ export class HipUserCard extends HipElement {
           display: inline-flex;
           align-items: center;
         }
+        /* 卡上元数据（标识牌 / 称号牌 / 加入时间 / +N）统一 12px：
+           对齐主流卡片 meta 字号，且不留亚像素级伪层级 */
         .mark {
           gap: 2px;
           border: 1px solid #d1d5db;
           border-radius: 4px;
-          font-size: 11px;
+          font-size: 12px;
           line-height: 1;
           padding: 2.5px 6px;
           color: var(--hip-card-text-secondary, #57606a);
@@ -319,9 +379,12 @@ export class HipUserCard extends HipElement {
           height: 1em;
           object-fit: contain;
         }
+        /* 卡片场景标识图标与主勋章同 20：同排图元尺寸统一（2px 级差读作不一致
+           而非层级，印记语义由紧贴昵称的位置表达）；行内场景 1.25em 相对制不受影响。
+           ⚠ 同步 DecorationPreview */
         .mark-icon {
-          width: 16px;
-          height: 16px;
+          width: 20px;
+          height: 20px;
           object-fit: contain;
           vertical-align: middle;
         }
@@ -333,7 +396,7 @@ export class HipUserCard extends HipElement {
           display: inline-flex;
           align-items: center;
           border-radius: 4px;
-          font-size: 11.5px;
+          font-size: 12px;
           line-height: 1;
           padding: 4px 10px;
           background: #f0f1f3;
@@ -407,23 +470,24 @@ export class HipUserCard extends HipElement {
           background: var(--hip-card-slot-hover-bg, rgba(31, 35, 40, 0.1));
         }
         .slot img {
-          width: 20px;
-          height: 20px;
+          width: 24px;
+          height: 24px;
           object-fit: contain;
         }
         .slot--more {
-          font-size: 11px;
+          font-size: 12px;
           font-weight: 600;
           color: var(--hip-card-text-muted, #8b949e);
           background: none;
           border: 1px dashed var(--hip-card-line, rgba(31, 35, 40, 0.25));
         }
         .joined {
-          font-size: 11.5px;
+          font-size: 12px;
           color: var(--hip-card-text-muted, #8b949e);
         }
       </style>
       <span class="trigger" tabindex="0"><slot>${escapeHtml(identity.displayName)}</slot></span>
+      <div class="cloak"></div>
       <div class="card" role="tooltip">
         <div class="card-bg"${backgroundStyle}></div>
         <div class="inner">
@@ -441,13 +505,21 @@ export class HipUserCard extends HipElement {
       </div>
     `
 
-    // 移动端 tap 切换；hover / focus 显示前先做视口防溢出判定
+    // 全平台点击切换（再点触发元素即关闭）；触发器是 span，需补键盘等效
+    // （原 :focus-within 显示规则已随 hover 触发一并移除，Enter/Space 保住键盘可达性）
     const trigger = this.shadow.querySelector('.trigger')
     trigger?.addEventListener('click', (event) => {
       event.stopPropagation()
       this.toggleCard(!this.cardVisible)
     })
-    trigger?.addEventListener('mouseenter', () => this.updatePlacement())
-    trigger?.addEventListener('focusin', () => this.updatePlacement())
+    trigger?.addEventListener('keydown', (event) => {
+      const key = (event as KeyboardEvent).key
+      if (key === 'Enter' || key === ' ') {
+        event.preventDefault()
+        this.toggleCard(!this.cardVisible)
+      }
+    })
+    // 遮罩在 shadow 内，document 级外点关闭（composedPath 含宿主）拦不到，单独接
+    this.shadow.querySelector('.cloak')?.addEventListener('click', () => this.toggleCard(false))
   }
 }

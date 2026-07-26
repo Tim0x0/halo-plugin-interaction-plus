@@ -142,6 +142,15 @@ export function safeHexColor(value?: string | null): string {
 }
 
 /**
+ * 仅接受「数字 + px/em/rem/%」的 CSS 长度值，非法值回落 fallback。
+ * 标签属性值一律视为不可信输入：长度值插进 <style> 前必须白名单，
+ * 否则形如 `40px}</style><img onerror=...>` 的属性值可闭合标签注入 HTML。
+ */
+export function safeCssSize(value: string | null, fallback: string): string {
+  return value && /^\d+(\.\d+)?(px|em|rem|%)$/.test(value) ? value : fallback
+}
+
+/**
  * 根据昵称样式生成受控 CSS 文本（不支持渐变时降级第一个颜色）。
  *
  * ⚠ 双实现同步清单：本函数与 Console 预览的 `ui/src/utils/decoration.ts` 的

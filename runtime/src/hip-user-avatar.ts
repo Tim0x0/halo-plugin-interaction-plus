@@ -1,11 +1,12 @@
 import { HipElement } from './base'
 import { avatarHtml, AVATAR_FRAME_CSS, AVATAR_IMG_CSS } from './card-parts'
+import { safeCssSize } from './identity'
 
 /**
  * hip-user-avatar：头像 + 头像框。
  * 头像框跟随头像容器自动缩放，不写死像素尺寸。
  *
- * 属性：user-name / data / size（可选，默认继承容器，如 "40px"）
+ * 属性：user-name / data / size（可选，仅接受数字+px/em/rem/% 白名单，默认与非法回落 "40px"）
  */
 export class HipUserAvatar extends HipElement {
   static get observedAttributes(): string[] {
@@ -13,7 +14,7 @@ export class HipUserAvatar extends HipElement {
   }
 
   protected render(): void {
-    const size = this.getAttribute('size') || '40px'
+    const size = safeCssSize(this.getAttribute('size'), '40px')
     const fallbackName = this.getAttribute('user-name') || ''
 
     this.shadow.innerHTML = `
