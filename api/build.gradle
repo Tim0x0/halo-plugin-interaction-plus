@@ -46,6 +46,28 @@ publishing {
             groupId = 'com.github.Tim0x0.halo-plugin-interaction-plus'
             artifactId = 'api'
             version = project.version
+            // POM 元数据：JitPack 不强制，Maven Central 是硬要求，提前补齐
+            pom {
+                name = 'interaction-plus api'
+                description = 'Interaction Plus 对外插件 API：发奖、身份查询与统计贡献扩展点的接口与 DTO'
+                url = 'https://github.com/Tim0x0/halo-plugin-interaction-plus'
+                licenses {
+                    license {
+                        name = 'GPL-3.0'
+                        url = 'https://github.com/Tim0x0/halo-plugin-interaction-plus/blob/main/LICENSE'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'Tim0x0'
+                        name = 'Tim0x0'
+                    }
+                }
+                scm {
+                    url = 'https://github.com/Tim0x0/halo-plugin-interaction-plus'
+                    connection = 'scm:git:https://github.com/Tim0x0/halo-plugin-interaction-plus.git'
+                }
+            }
         }
     }
 }

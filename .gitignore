@@ -76,3 +76,5 @@ application-local.yaml
 application-local.properties
 
 /workplace/
+# 本地设计工作区（roadmap / 设计稿），不进仓库
+/.dev/

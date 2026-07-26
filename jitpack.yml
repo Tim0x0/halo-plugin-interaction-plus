@@ -5,5 +5,8 @@ jdk:
   - openjdk21
 # 显式触发 api 模块的本地发布：JitPack 在其构建机上跑 publishToMavenLocal，
 # 把构件捕获到它机器的 ~/.m2，再以 jitpack.io 作为 Maven 仓库对外服务。
+# -Pversion 用 JitPack 注入的 VERSION 环境变量（即 git tag，剥掉 v 前缀）覆盖
+# gradle.properties 的版本号，使 ~/.m2 构件版本与 tag 坐标直接对齐，
+# 不再依赖 JitPack 的自动 re-version 兜底。
 install:
-  - ./gradlew :api:build :api:publishToMavenLocal --no-daemon
+  - ./gradlew :api:build :api:publishToMavenLocal -Pversion=${VERSION#v} --no-daemon
