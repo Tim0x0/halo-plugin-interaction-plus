@@ -174,7 +174,7 @@ Base：`/apis/api.interaction-plus.timxs.com/v1alpha1`（游客可访问）。
 
 **互动统计 `stats`**（用户悬浮卡数据行与「加入时间」的数据源）：`posts` / `comments` 为公开口径计数（已发布文章、已审核评论）；`stats.decorations` 为各类装扮的持有计数，**为 `null` 表示用户关闭了公开装扮墙**（此时请勿显示勋章计数）；`extras` 为其他插件贡献的统计项（`source` 是来源插件 id，`value` 已格式化、原样展示即可）。
 
-**称号双形态**：`titleMode` 为 `text` 时按 `titleColor` / `titleBackground`（可选 `titleBackgroundSecondary`，两者形成 135° 渐变）渲染文字牌；为 `image` 时图片地址在 `url`，`titleText` 作为替代文本与加载失败时的回落文案。整图称号建议按场景限高：行内（随文字行）约 `20px`、卡片等独立展示位约 `32px`，并设最大宽度防超宽横条破坏排版——`hip-user-*` 组件已内置该约束（`max-height` + `max-width` 双上限，图按自身比例取最优尺寸，可用 `--hip-title-img-height` / `--hip-title-img-max-width` 覆盖），自渲染的主题请自行限制。
+**称号双形态**：`titleMode` 为 `text` 时按 `titleColor` / `titleBackground`（可选 `titleBackgroundSecondary`，两者形成 135° 渐变）渲染文字牌；为 `image` 时图片地址在 `url`，`titleText` 作为替代文本与加载失败时的回落文案。整图称号建议按场景限高：行内随文字行缩放（默认 `1.25em`，16px 正文下约 `20px`）、卡片等独立展示位约 `32px`，并设最大宽度防超宽横条破坏排版——`hip-user-*` 组件已内置该约束（`max-height` + `max-width` 双上限，图按自身比例取最优尺寸，可用 `--hip-title-img-height` / `--hip-title-img-max-width` 覆盖），自渲染的主题请自行限制。
 
 `/identity/{userName}/decorations` 返回装饰数组（每项自包含，无需再按 id 查询）：
 
@@ -199,10 +199,10 @@ Base：`/apis/api.interaction-plus.timxs.com/v1alpha1`（游客可访问）。
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `--hip-card-width` | `560px` | 卡片宽度（另有 `calc(100vw - 24px)` 响应上限兜底） |
+| `--hip-card-width` | `560px` | 卡片宽度（另有 `calc(100vw - 24px)` 响应上限兜底；窄屏 ≤640px 由固定全宽形态接管，此变量不生效） |
 | `--hip-card-radius` | `12px` | 卡片圆角 |
 | `--hip-card-hero-height` | `60px` | 顶部背景露出带高度 |
-| `--hip-card-surface-height` | `236px` | 内容层固定高度（卡片总高 = 露出带 + 此值，恒定不随内容浮动） |
+| `--hip-card-surface-height` | `236px` | 内容层固定高度（卡片总高 = 露出带 + 此值，恒定不随内容浮动；窄屏全宽形态下高度改为随内容自适应，此变量不生效） |
 | `--hip-card-hero-fallback` | 低饱和灰渐变 | 未佩戴背景装扮时露出带的占位背景（`background-image` 值） |
 | `--hip-card-surface` | `rgba(255,255,255,.85)` | 内容层底色（半透明素玻璃）；暗色主题覆盖为墨色系即可整卡切暗 |
 | `--hip-card-fallback-bg` | `#f0f1f3` | 背景图加载前的卡片兜底底色 |
