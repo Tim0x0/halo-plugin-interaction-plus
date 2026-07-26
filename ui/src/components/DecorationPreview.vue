@@ -15,12 +15,31 @@ const props = withDefaults(
     scenes?: PreviewScene[]
     /** 布局：stack 竖向堆叠（默认）/ row 场景横向并排 */
     layout?: 'stack' | 'row'
+    /** 展柜格数上限：UC 传显示设置的 userCardShowcaseBadgeLimit（可调 0-8），缺省对齐设置默认值 */
+    showcaseLimit?: number
   }>(),
   {
     scenes: () => ['identity_line', 'user_card'],
     layout: 'stack',
+    showcaseLimit: 5,
   },
 )
+
+// 图片 404 兜底，分位置对齐 runtime hip-user-card 的口径（两侧改动必须同步）：
+// 头像 / 标识图标 / 整图称号裂图切文字占位（字母 / 文字牌），
+// 头像框 / 勋章 / 展柜格裂图直接隐藏（失败 = 该件缺失）
+const brokenUrls = ref(new Set<string>())
+
+function markBrokenUrl(url?: string) {
+  if (url) {
+    brokenUrls.value.add(url)
+  }
+}
+
+/** 头像框 / 勋章 / 展柜格专用：失败 = 缺失，直接隐藏。 */
+function hideBrokenImg(event: Event) {
+  ;(event.target as HTMLElement).style.display = 'none'
+}
 
 function hasScene(scene: PreviewScene): boolean {
   return props.scenes.includes(scene)
@@ -31,8 +50,13 @@ const nameCss = computed(() => nameStyleCss(props.data.nameStyle))
 // PreviewData 的称号字段与 AssetPayload 同名，直接复用统一的称号样式规则
 const titleStyle = computed(() => titleCss(props.data))
 
-// 整图称号：有图且形态为 image 时渲染 <img>，否则渲染文字牌
-const isImageTitle = computed(() => props.data.titleMode === 'image' && !!props.data.titleImageUrl)
+// 整图称号：有图且形态为 image 时渲染 <img>，否则渲染文字牌（裂图也回落文字牌）
+const isImageTitle = computed(
+  () =>
+    props.data.titleMode === 'image' &&
+    !!props.data.titleImageUrl &&
+    !brokenUrls.value.has(props.data.titleImageUrl),
+)
 
 const displayName = computed(() => props.data.displayName || '示例用户')
 
@@ -54,9 +78,7 @@ const SAMPLE_STATS = [
   { label: '评论', value: '356' },
   { label: '勋章', value: String(SAMPLE_BADGE_TOTAL) },
 ]
-const cardStatItems = computed(() =>
-  props.data.stats?.length ? props.data.stats : SAMPLE_STATS,
-)
+const cardStatItems = computed(() => (props.data.stats?.length ? props.data.stats : SAMPLE_STATS))
 
 const badgeTotal = computed(() => props.data.badgeTotal ?? SAMPLE_BADGE_TOTAL)
 
@@ -71,12 +93,10 @@ const joinedText = computed(() => {
   return '2021 年 3 月加入'
 })
 
-/** 展柜最多 5 格（对齐显示设置默认值），总数扣除已展示数为「+N」。 */
-const shelfShowcase = computed(() => showcase.value.slice(0, 5))
+/** 展柜格数跟随显示设置（UC 经 showcaseLimit 传入真实值），总数扣除已展示数为「+N」。 */
+const shelfShowcase = computed(() => showcase.value.slice(0, props.showcaseLimit))
 const shelfMore = computed(() =>
-  shelfShowcase.value.length
-    ? Math.max(0, badgeTotal.value - shelfShowcase.value.length)
-    : 0,
+  shelfShowcase.value.length ? Math.max(0, badgeTotal.value - shelfShowcase.value.length) : 0,
 )
 
 // ── 用户悬浮卡：等比缩放（所见即所得小样） ──
@@ -166,23 +186,31 @@ const cardScaleStyle = computed(() => ({
       <div class="hip-preview__label">轻量身份行</div>
       <div class="hip-preview__identity-line">
         <span class="hip-preview__avatar hip-preview__avatar--sm">
-          <img v-if="data.avatar" class="hip-preview__avatar-img" :src="data.avatar" alt="" />
+          <img
+            v-if="data.avatar && !brokenUrls.has(data.avatar)"
+            class="hip-preview__avatar-img"
+            :src="data.avatar"
+            alt=""
+            @error="markBrokenUrl(data.avatar)"
+          />
           <span v-else class="hip-preview__avatar-fallback">{{ displayName[0] }}</span>
           <img
             v-if="data.avatarFrameUrl"
             class="hip-preview__frame"
             :src="data.avatarFrameUrl"
             alt=""
+            @error="hideBrokenImg"
           />
         </span>
         <span class="hip-preview__name" :style="nameCss">{{ displayName }}</span>
         <template v-if="marks[0]">
           <img
-            v-if="marks[0].icon"
+            v-if="marks[0].icon && !brokenUrls.has(marks[0].icon)"
             class="hip-preview__mark-icon"
             :src="marks[0].icon"
             :alt="marks[0].displayName"
             :title="marks[0].displayName"
+            @error="markBrokenUrl(marks[0].icon)"
           />
           <span
             v-else
@@ -198,6 +226,7 @@ const cardScaleStyle = computed(() => ({
           :src="data.titleImageUrl"
           :alt="data.titleText"
           :title="data.titleText"
+          @error="markBrokenUrl(data.titleImageUrl)"
         />
         <span v-else-if="data.titleText" class="hip-preview__title" :style="titleStyle">{{
           data.titleText
@@ -207,6 +236,7 @@ const cardScaleStyle = computed(() => ({
           class="hip-preview__badge"
           :src="data.primaryBadgeUrl"
           alt=""
+          @error="hideBrokenImg"
         />
       </div>
     </div>
@@ -220,87 +250,98 @@ const cardScaleStyle = computed(() => ({
       <div ref="cardViewport" class="hip-preview__viewport">
         <div class="hip-preview__stage" :style="stageStyle">
           <div ref="cardEl" class="hip-preview__card" :style="cardScaleStyle">
-          <div class="hip-preview__card-bg" :style="cardBackgroundStyle"></div>
-          <div class="hip-preview__card-inner">
-            <div class="hip-preview__surface">
-              <span class="hip-preview__avatar hip-preview__avatar--card">
-                <img v-if="data.avatar" class="hip-preview__avatar-img" :src="data.avatar" alt="" />
-                <span v-else class="hip-preview__avatar-fallback">{{ displayName[0] }}</span>
-                <img
-                  v-if="data.avatarFrameUrl"
-                  class="hip-preview__frame"
-                  :src="data.avatarFrameUrl"
-                  alt=""
-                />
-              </span>
-              <div class="hip-preview__head">
-                <div class="hip-preview__card-name-row">
-                  <span class="hip-preview__card-name" :style="nameCss">{{ displayName }}</span>
-                  <template v-for="(mark, index) in marks.slice(0, 3)" :key="index">
-                    <img
-                      v-if="mark.icon"
-                      class="hip-preview__mark-icon"
-                      :src="mark.icon"
-                      :alt="mark.displayName"
-                      :title="mark.displayName"
-                    />
-                    <span
-                      v-else
-                      class="hip-preview__mark"
-                      :style="{ borderColor: mark.color, color: mark.color }"
-                    >
-                      {{ mark.displayName }}
-                    </span>
-                  </template>
+            <div class="hip-preview__card-bg" :style="cardBackgroundStyle"></div>
+            <div class="hip-preview__card-inner">
+              <div class="hip-preview__surface">
+                <span class="hip-preview__avatar hip-preview__avatar--card">
                   <img
-                    v-if="data.primaryBadgeUrl"
-                    class="hip-preview__badge"
-                    :src="data.primaryBadgeUrl"
+                    v-if="data.avatar && !brokenUrls.has(data.avatar)"
+                    class="hip-preview__avatar-img"
+                    :src="data.avatar"
                     alt=""
+                    @error="markBrokenUrl(data.avatar)"
                   />
-                </div>
-                <div v-if="isImageTitle || data.titleText" class="hip-preview__title-line">
+                  <span v-else class="hip-preview__avatar-fallback">{{ displayName[0] }}</span>
                   <img
-                    v-if="isImageTitle"
-                    class="hip-preview__title-img"
-                    :src="data.titleImageUrl"
-                    :alt="data.titleText"
-                    :title="data.titleText"
+                    v-if="data.avatarFrameUrl"
+                    class="hip-preview__frame"
+                    :src="data.avatarFrameUrl"
+                    alt=""
+                    @error="hideBrokenImg"
                   />
-                  <span v-else class="hip-preview__card-title" :style="titleStyle">{{
-                    data.titleText
-                  }}</span>
-                </div>
-              </div>
-              <div class="hip-preview__bio" :class="{ 'hip-preview__bio--empty': !data.bio }">
-                {{ data.bio || 'TA 还没有留下个人说明' }}
-              </div>
-              <div class="hip-preview__dstats">
-                <span v-for="item in cardStatItems" :key="item.label" class="hip-preview__di">
-                  <b>{{ item.value }}</b>{{ item.label }}
                 </span>
-              </div>
-              <div class="hip-preview__shelf-row">
-                <div class="hip-preview__shelf">
-                  <span
-                    v-for="(url, index) in shelfShowcase"
-                    :key="index"
-                    class="hip-preview__slot"
-                  >
-                    <img :src="url" alt="" />
-                  </span>
-                  <span
-                    v-if="shelfMore > 0"
-                    class="hip-preview__slot hip-preview__slot--more"
-                    :title="`共 ${badgeTotal} 枚`"
-                  >
-                    +{{ shelfMore }}
+                <div class="hip-preview__head">
+                  <div class="hip-preview__card-name-row">
+                    <span class="hip-preview__card-name" :style="nameCss">{{ displayName }}</span>
+                    <template v-for="(mark, index) in marks.slice(0, 3)" :key="index">
+                      <img
+                        v-if="mark.icon && !brokenUrls.has(mark.icon)"
+                        class="hip-preview__mark-icon"
+                        :src="mark.icon"
+                        :alt="mark.displayName"
+                        :title="mark.displayName"
+                        @error="markBrokenUrl(mark.icon)"
+                      />
+                      <span
+                        v-else
+                        class="hip-preview__mark"
+                        :style="{ borderColor: mark.color, color: mark.color }"
+                      >
+                        {{ mark.displayName }}
+                      </span>
+                    </template>
+                    <img
+                      v-if="data.primaryBadgeUrl"
+                      class="hip-preview__badge"
+                      :src="data.primaryBadgeUrl"
+                      alt=""
+                      @error="hideBrokenImg"
+                    />
+                  </div>
+                  <div v-if="isImageTitle || data.titleText" class="hip-preview__title-line">
+                    <img
+                      v-if="isImageTitle"
+                      class="hip-preview__title-img"
+                      :src="data.titleImageUrl"
+                      :alt="data.titleText"
+                      :title="data.titleText"
+                      @error="markBrokenUrl(data.titleImageUrl)"
+                    />
+                    <span v-else class="hip-preview__card-title" :style="titleStyle">{{
+                      data.titleText
+                    }}</span>
+                  </div>
+                </div>
+                <div class="hip-preview__bio" :class="{ 'hip-preview__bio--empty': !data.bio }">
+                  {{ data.bio || 'TA 还没有留下个人说明' }}
+                </div>
+                <div class="hip-preview__dstats">
+                  <span v-for="item in cardStatItems" :key="item.label" class="hip-preview__di">
+                    <b>{{ item.value }}</b
+                    >{{ item.label }}
                   </span>
                 </div>
-                <span class="hip-preview__joined">{{ joinedText }}</span>
+                <div class="hip-preview__shelf-row">
+                  <div class="hip-preview__shelf">
+                    <span
+                      v-for="(url, index) in shelfShowcase"
+                      :key="index"
+                      class="hip-preview__slot"
+                    >
+                      <img :src="url" alt="" @error="hideBrokenImg" />
+                    </span>
+                    <span
+                      v-if="shelfMore > 0"
+                      class="hip-preview__slot hip-preview__slot--more"
+                      :title="`共 ${badgeTotal} 枚`"
+                    >
+                      +{{ shelfMore }}
+                    </span>
+                  </div>
+                  <span class="hip-preview__joined">{{ joinedText }}</span>
+                </div>
               </div>
             </div>
-          </div>
           </div>
         </div>
       </div>
@@ -393,10 +434,11 @@ const cardScaleStyle = computed(() => ({
   padding: 2px 5px;
   color: #4b5563;
 }
-/* 身份标识图标（有图标只显图标，固定尺寸保证不撑高行） */
+/* 身份标识图标（有图标只显图标）。行内场景与主勋章统一 18
+   （≈ 预览 14px 正文的 1.25em，模拟 runtime 的 min(1.25em, 20px)） */
 .hip-preview__mark-icon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   object-fit: contain;
   vertical-align: middle;
 }
@@ -475,7 +517,7 @@ const cardScaleStyle = computed(() => ({
   flex-direction: column;
   gap: 9px;
 }
-/* 头像 96：骑内容层上缘，上半浸在背景露出带里 */
+/* 头像 96：骑内容层上缘，上半浸在背景露出带里（同步 runtime，用户定稿值勿擅调） */
 .hip-preview__avatar--card {
   position: absolute;
   left: 26px;
@@ -502,10 +544,21 @@ const cardScaleStyle = computed(() => ({
   flex-wrap: wrap;
 }
 .hip-preview__card-name {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
   color: #24292f;
   line-height: 1.25;
+}
+/* 卡片场景主勋章与标识图标统一 20（同排图元尺寸统一；行内场景维持原值，
+   同步 runtime 的场景分化默认） */
+.hip-preview__card-name-row .hip-preview__badge,
+.hip-preview__card-name-row .hip-preview__mark-icon {
+  width: 20px;
+  height: 20px;
+}
+/* 卡片场景标识文字牌 12（卡上 meta 统一字号；行内场景维持 11 近似） */
+.hip-preview__card-name-row .hip-preview__mark {
+  font-size: 12px;
 }
 .hip-preview__title-line {
   display: flex;
@@ -515,7 +568,7 @@ const cardScaleStyle = computed(() => ({
   display: inline-flex;
   align-items: center;
   border-radius: 4px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
   line-height: 1;
   padding: 4px 10px;
@@ -587,19 +640,19 @@ const cardScaleStyle = computed(() => ({
   background: rgba(31, 35, 40, 0.1);
 }
 .hip-preview__slot img {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
 }
 .hip-preview__slot--more {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: #8b949e;
   background: none;
   border: 1px dashed rgba(31, 35, 40, 0.25);
 }
 .hip-preview__joined {
-  font-size: 11.5px;
+  font-size: 12px;
   color: #8b949e;
 }
 </style>

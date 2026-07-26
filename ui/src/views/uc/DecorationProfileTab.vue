@@ -49,7 +49,7 @@ onMounted(load)
     <div v-else class="flex items-start justify-between gap-4 py-2">
       <div>
         <div class="text-sm font-medium text-gray-900">公开我的装扮墙</div>
-        <div class="mt-1 text-xs leading-relaxed text-gray-500">
+        <div class="hip-profile-deco-tab__desc mt-1 text-xs text-gray-500">
           开启后，支持的主题可在你的个人主页等位置展示你获得的装饰；关闭后不对外公开。
           （不影响评论区等位置已佩戴装扮的正常展示。）
         </div>
@@ -58,3 +58,10 @@ onMounted(load)
     </div>
   </div>
 </template>
+
+<style scoped>
+/* leading-relaxed 未被宿主 Tailwind JIT 产出（宿主源码不含该类），行高由本组件自持 */
+.hip-profile-deco-tab__desc {
+  line-height: 1.625;
+}
+</style>

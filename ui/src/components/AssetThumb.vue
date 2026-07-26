@@ -3,7 +3,7 @@
 // 称号 = 文本 + 前景 / 背景色；昵称样式 = 示例字 + 纯色 / 渐变；
 // 整图称号（titleMode=image）与其他图片类型统一走素材图分支。
 // 资产网格、行列表、我的装扮、投稿列表、装饰选择弹窗统一复用。
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { AssetPayload, AssetRef, DecorationTypeValue } from '@/types'
 import { nameStyleCss, thumbnailUrl, titleCss, TYPE_LABELS } from '@/utils/decoration'
 
@@ -23,6 +23,13 @@ const props = withDefaults(
 )
 
 const imageUrl = computed(() => thumbnailUrl(props.asset?.url, props.size === 'sm' ? 'S' : 'M'))
+
+// 素材 404 兜底：裂图切换到文字兜底分支（对齐 runtime「加载失败 = 缺失」口径）；
+// 素材地址变化（如编辑中更换）时复位重试
+const broken = ref(false)
+watch(imageUrl, () => {
+  broken.value = false
+})
 
 const titleStyle = computed(() => titleCss(props.payload))
 const nameCss = computed(() => nameStyleCss(props.payload?.nameStyle))
@@ -51,7 +58,13 @@ const fallbackLabel = computed(
       {{ displayName || '昵称样式' }}
     </span>
     <!-- 有素材图的类型 -->
-    <img v-else-if="imageUrl" :src="imageUrl" :alt="displayName" loading="lazy" />
+    <img
+      v-else-if="imageUrl && !broken"
+      :src="imageUrl"
+      :alt="displayName"
+      loading="lazy"
+      @error="broken = true"
+    />
     <!-- 兜底 -->
     <span v-else class="hip-thumb__fallback">{{ fallbackLabel }}</span>
   </div>

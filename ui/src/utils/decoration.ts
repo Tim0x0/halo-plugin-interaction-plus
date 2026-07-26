@@ -81,6 +81,7 @@ export const INVALID_BADGE_LABELS: Record<string, string> = {
 export const GRANT_FAILURE_LABELS: Record<string, string> = {
   ASSET_NOT_FOUND: '装饰不存在或已删除',
   ASSET_NOT_ACTIVE: '装饰未启用',
+  USER_NOT_FOUND: '用户不存在',
   GRANT_ERROR: '授予失败',
 }
 

@@ -38,10 +38,20 @@ function submitForm() {
   formRef.value?.node?.submit?.()
 }
 
-function copyId() {
-  if (props.asset) {
-    navigator.clipboard?.writeText(props.asset.metadata.name)
+async function copyId() {
+  if (!props.asset) {
+    return
+  }
+  try {
+    if (!navigator.clipboard) {
+      // 非安全上下文（http 站点）下 clipboard API 不存在
+      throw new Error('clipboard unavailable')
+    }
+    await navigator.clipboard.writeText(props.asset.metadata.name)
     Toast.success('已复制装饰标识')
+  } catch {
+    // 标识值已设 user-select: all，点击即可全选
+    Toast.warning('复制失败，请手动选中复制')
   }
 }
 
@@ -97,6 +107,16 @@ watch(
   { immediate: true },
 )
 
+// 素材经 attachment 输入更换后 mediaType 不再可知：与原素材不同则清空，
+// 避免提交 url 与 mediaType 的脏配对（后端不重探；SVG 判定回落 .svg 后缀）
+watch(
+  () => formState.assetUrl,
+  (url) => {
+    const original = props.asset?.spec.asset
+    formState.assetMediaType = original && url === original.url ? original.mediaType || '' : ''
+  },
+)
+
 // 需要素材的类型：图片类三种 + 整图形态称号（文字牌称号 / 昵称样式纯配置）
 const needMaterial = computed(
   () =>
@@ -107,7 +127,7 @@ const needMaterial = computed(
 const materialHelp = computed(() =>
   formState.type === 'title'
     ? '建议细长横条图：文字单行排布并占画布高 70% 以上、宽高比不超过 10:1、高 40-64px（行内按 20px、卡片按最高 32px 缩放，偏方的图会明显缩小）'
-    : '勋章建议不低于 128x128；头像框建议透明图不低于 256x256，图案画满画布、勿留透明边距（展示按头像约 1.24 倍叠放）；名片背景建议 1120x592（与卡片 560x296 同比例零裁切，偏方的图会居中裁上下）；单图大小建议控制在 1-4MB 内',
+    : '勋章建议不低于 128x128 且图案画满画布、勿留透明边距（展示位按图适配，边距会让勋章显小一圈）；头像框建议透明图不低于 256x256，图案画满画布、勿留透明边距（展示按头像约 1.24 倍叠放）；名片背景建议 1120x592（与卡片 560x296 同比例零裁切，偏方的图会居中裁上下）；单图大小建议控制在 1-4MB 内',
 )
 
 const categoryOptions = computed(() => [
@@ -177,7 +197,7 @@ const previewData = computed<PreviewData>(() => {
   }
 })
 
-// 预览场景切换（身份行 / 卡片 / 主页），默认停在卡片
+// 预览场景切换（身份行 / 卡片），默认停在卡片
 const previewScene = ref<PreviewScene>('user_card')
 const sceneTabs: Array<{ id: PreviewScene; label: string }> = [
   { id: 'identity_line', label: '身份行' },

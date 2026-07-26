@@ -3,8 +3,12 @@ import Icons from "unplugin-icons/rspack";
 import { pluginSass } from "@rsbuild/plugin-sass";
 import type { RsbuildConfig } from "@rsbuild/core";
 
+// dev 输出目录无需覆盖：bundler-kit ≥2.25 按 plugin.yaml 的 requires（>=2.25.0）
+// 自动选定 ui/ 作为 bundle 位置，dev 默认输出 ../build/resources/main/ui、
+// publicPath 默认 /plugins/<name>/assets/ui/（含 async chunk），与此前手工覆盖完全一致。
+// ⚠ 若未来把 requires 降到 2.25 以下，kit 会退回旧的 console/ 目录，需要恢复覆盖。
 export default rsbuildConfig({
-  rsbuild: ({ envMode }) => ({
+  rsbuild: () => ({
     resolve: {
       alias: {
         "@": "./src",
@@ -16,17 +20,5 @@ export default rsbuildConfig({
         plugins: [Icons({ compiler: "vue3" })],
       },
     },
-    // dev 产物输出到 resources/main/ui：kit 默认 dev 输出 console/，
-    // 而 Halo 2.25 优先读取 ui/，跑过完整 gradle 构建后旧 ui/ 会遮蔽
-    // console/ 下的 dev 改动导致“热更新不生效”（审查报告问题 6）。
-    // 注意：若未来引入 async chunk，需同步覆盖 publicPath 为 /assets/ui/。
-    output:
-      envMode === 'production'
-        ? {}
-        : {
-            distPath: {
-              root: '../build/resources/main/ui',
-            },
-          },
   }),
 }) as RsbuildConfig

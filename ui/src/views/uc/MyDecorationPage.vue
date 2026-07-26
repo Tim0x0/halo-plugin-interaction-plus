@@ -159,6 +159,13 @@ function formatCount(value: number): string {
 
 const identityStats = ref<{ items: PreviewStatItem[]; badgeTotal?: number }>({ items: [] })
 
+// 展柜格数跟随显示设置（管理员可调 0-8）：真卡按 display.userCardShowcaseBadgeLimit
+// 渲染，预览同源取值；拉取失败时 undefined → 预览组件回落默认 5
+const showcaseLimit = ref<number>()
+
+// 标识图标 404 兜底：裂图回落文字牌（按 URL 记失效，对齐 runtime「失败切文本牌」）
+const brokenMarkIcons = ref(new Set<string>())
+
 /** 拉取公开身份聚合的互动统计；失败静默（预览回落组件内示例值）。 */
 async function loadIdentityStats(userName: string) {
   try {
@@ -170,6 +177,10 @@ async function loadIdentityStats(userName: string) {
       return
     }
     const identity = await response.json()
+    const limit = identity?.display?.userCardShowcaseBadgeLimit
+    if (typeof limit === 'number') {
+      showcaseLimit.value = limit
+    }
     const stats = identity?.stats
     if (!stats) {
       return
@@ -742,7 +753,11 @@ onMounted(load)
               </button>
             </div>
             <div class="hip-panel__preview">
-              <DecorationPreview :data="previewData" :scenes="[previewScene]" />
+              <DecorationPreview
+                :data="previewData"
+                :scenes="[previewScene]"
+                :showcase-limit="showcaseLimit"
+              />
             </div>
             <!-- 身份标识：来自角色，只读展示（不可佩戴 / 卸下） -->
             <div v-if="identityMarks.length" class="hip-panel__marks">
@@ -750,11 +765,12 @@ onMounted(load)
               <span class="hip-panel__marks-items">
                 <template v-for="(mark, index) in identityMarks" :key="index">
                   <img
-                    v-if="mark.icon"
+                    v-if="mark.icon && !brokenMarkIcons.has(mark.icon)"
                     class="hip-panel__mark-icon"
                     :src="mark.icon"
                     :alt="mark.displayName"
                     :title="mark.displayName"
+                    @error="brokenMarkIcons.add(mark.icon)"
                   />
                   <span
                     v-else
@@ -880,19 +896,29 @@ onMounted(load)
   margin-bottom: var(--hip-gap-md);
 }
 
-/* 左右分栏：左库存滚动，右预览 sticky（380 = 卡片小样约 0.6 倍，兼顾库存列空间） */
+/* 左右分栏：左库存滚动，右预览 sticky。预览列流式取宽：占容器 40%、
+   区间 480-520（卡片缩放约 0.75-0.82）——预览是小样不是真卡，1:1 在管理面板里
+   视觉过强（实测反馈），压回克制区间；库存列 auto-fill 自适应，不足走堆叠断点。
+   横向滚动条防线在另外两处：库存列 min-width:0 + 断点 1200 保证并排时左列够宽 */
 .hip-deco {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr) clamp(480px, 40%, 520px);
   gap: var(--hip-gap-lg);
   align-items: start;
+}
+/* 左列必须允许收缩（grid 项默认 min-width:auto 会被 VTabbar 等
+   不可收缩内容撑破，进而顶出横向滚动条） */
+.hip-deco__inventory {
+  min-width: 0;
 }
 .hip-deco__panel {
   position: sticky;
   top: 16px;
 }
-/* 窄屏：预览面板吸顶置于上方（紧凑） */
-@media (max-width: 900px) {
+/* 窄屏：预览面板吸顶置于上方（紧凑）。断点定 1200：并排形态只在
+   左列保底约 450px（类型 Tab 行 + 双列库存放得下）时才存在，
+   再窄一律堆叠——任何宽度下都不允许出现横向滚动条 */
+@media (max-width: 1200px) {
   .hip-deco {
     grid-template-columns: 1fr;
   }
@@ -923,12 +949,13 @@ onMounted(load)
   flex-wrap: wrap;
 }
 
-/* 库存卡片（类型 tag 左上角、稀有度独占边框、佩戴中角标 + 柔光）；
-   列宽下限对齐 Console 资产卡（AssetsPage .hip-grid 的 200px），两端卡片同规格，
-   且保证勋章双钮（五字文案）一行放下 */
+/* 库存卡片（类型 tag 左上角、稀有度独占边框、佩戴中角标 + 柔光）。
+   列宽下限 216：勋章双钮（「设为主勋章」五字 + sm 钮内衬 ≈ 89px/钮）在
+   内容区 192px 内稳定一行——200 下限实测在窄列临界处按钮文字会折行，
+   故有意偏离 Console 资产卡的 200（Console 卡无双钮，不受此约束） */
 .hip-inv {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
   gap: var(--hip-gap-md);
   padding: var(--hip-gap-lg);
 }
@@ -1022,6 +1049,8 @@ onMounted(load)
 .hip-inv__actions > * {
   flex: 1;
   min-width: 0;
+  /* 兜底：按钮文字绝不折行成两行高（列宽由网格 216 下限保证，不应触发） */
+  white-space: nowrap;
 }
 
 /* 预览面板 */

@@ -30,6 +30,10 @@ const { items, loading, error, load } = useListQuery<IdentityMarkMappingView>(()
   identityMarkApi.list({ page: 1, size: 200 }),
 )
 
+// 图标 404 兜底：裂图回落文字牌（对齐 runtime「mark 图标失败切文本牌」）；
+// 按图标 URL 记失效，编辑换图后新地址自然重试，无需手动清理
+const brokenIcons = ref(new Set<string>())
+
 // ── 拖拽排序：priority 越大越靠前，顶部 = 最大 ──────────
 // 拖拽仅改本地顺序并标脏，由用户点「保存排序」显式提交（不即时保存）
 
@@ -228,7 +232,8 @@ onMounted(load)
       <template #header>
         <div class="hip-toolbar">
           <span class="hip-toolbar__hint">
-            身份标识来自 Halo 原生角色，拖拽 ⠿ 调整展示顺序（越靠上越优先），不进入用户库存、不占佩戴槽位。
+            身份标识来自 Halo 原生角色，拖拽 ⠿
+            调整展示顺序（越靠上越优先），不进入用户库存、不占佩戴槽位。
           </span>
           <div v-if="orderDirty" class="hip-toolbar__right">
             <span class="hip-toolbar__hint">排序未保存</span>
@@ -265,13 +270,14 @@ onMounted(load)
               <span class="hip-drag-handle" title="拖拽排序">⠿</span>
             </td>
             <td class="hip-td-fit">
-              <!-- 有图标只显图标，无图标显文字牌；统一尺寸不撑高行 -->
+              <!-- 有图标只显图标，无图标 / 图标加载失败显文字牌；统一尺寸不撑高行 -->
               <img
-                v-if="view.mapping.spec.icon"
+                v-if="view.mapping.spec.icon && !brokenIcons.has(view.mapping.spec.icon)"
                 class="hip-mark-icon"
                 :src="view.mapping.spec.icon"
                 :alt="view.mapping.spec.displayName"
                 :title="view.mapping.spec.displayName"
+                @error="brokenIcons.add(view.mapping.spec.icon)"
               />
               <span
                 v-else
@@ -332,8 +338,19 @@ onMounted(load)
           label="Halo 角色"
           help="创建后不可修改；一个角色只能映射一次"
         />
-        <FormKit v-else type="text" label="Halo 角色" :model-value="editing.roleDisplayName ?? editing.mapping.spec.roleName" disabled />
-        <FormKit v-model="formState.displayName" type="text" label="身份名称" validation="required" />
+        <FormKit
+          v-else
+          type="text"
+          label="Halo 角色"
+          :model-value="editing.roleDisplayName ?? editing.mapping.spec.roleName"
+          disabled
+        />
+        <FormKit
+          v-model="formState.displayName"
+          type="text"
+          label="身份名称"
+          validation="required"
+        />
         <FormKit
           v-model="iconSource"
           type="radio"
@@ -352,7 +369,13 @@ onMounted(load)
           :value-only="true"
           help="从 Iconify 图标库选择（可设颜色）；选择时需联网，保存后自包含不再依赖外部服务"
         />
-        <FormKit v-else v-model="formState.icon" type="attachment" label="图标" :accepts="['image/*']" />
+        <FormKit
+          v-else
+          v-model="formState.icon"
+          type="attachment"
+          label="图标"
+          :accepts="['image/*']"
+        />
         <FormKit v-model="formState.color" type="color" label="颜色" />
         <FormKit v-model="formState.enabled" type="switch" label="启用" />
       </FormKit>
