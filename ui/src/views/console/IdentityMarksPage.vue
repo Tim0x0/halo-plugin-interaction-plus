@@ -137,6 +137,40 @@ function submitForm() {
   formRef.value?.node?.submit?.()
 }
 
+/**
+ * 「字形染色、图片原色」：图标库字形（data: 形态的 SVG）保存时把颜色写进
+ * SVG 根节点的 color 属性——字形的 currentColor 由此取色，渲染层零改动；
+ * 幂等（重复保存 / 改色重存都只重写根节点属性），上传图片与非 SVG 原样返回。
+ */
+function tintGlyphIcon(icon: string, color: string): string {
+  if (!icon.startsWith('data:image/svg+xml') || !/^#[0-9a-fA-F]{3,8}$/.test(color)) {
+    return icon
+  }
+  const comma = icon.indexOf(',')
+  if (comma < 0) {
+    return icon
+  }
+  const header = icon.slice(0, comma + 1)
+  const isBase64 = header.includes(';base64')
+  let svg: string
+  try {
+    svg = isBase64 ? atob(icon.slice(comma + 1)) : decodeURIComponent(icon.slice(comma + 1))
+  } catch {
+    return icon
+  }
+  if (!svg.includes('<svg')) {
+    return icon
+  }
+  const tinted = svg
+    .replace(/(<svg[^>]*?)\s+color="[^"]*"/i, '$1')
+    .replace(/<svg/i, `<svg color="${color}"`)
+  try {
+    return header + (isBase64 ? btoa(tinted) : encodeURIComponent(tinted))
+  } catch {
+    return icon
+  }
+}
+
 async function handleSave() {
   const roleName = Array.isArray(formState.roleName) ? formState.roleName[0] : formState.roleName
   if (!editing.value && !roleName) {
@@ -148,7 +182,9 @@ async function handleSave() {
     const param = {
       roleName: roleName || undefined,
       displayName: formState.displayName.trim(),
-      icon: formState.icon || undefined,
+      icon: formState.icon
+        ? tintGlyphIcon(formState.icon, formState.color)
+        : undefined,
       color: formState.color || undefined,
       // 新建排在最前（当前最大 + 1）；编辑保持原值
       priority: editing.value
@@ -367,7 +403,7 @@ onMounted(load)
           label="图标"
           format="dataurl"
           :value-only="true"
-          help="从 Iconify 图标库选择（可设颜色）；选择时需联网，保存后自包含不再依赖外部服务"
+          help="从 Iconify 图标库选择，颜色由下方「颜色」字段统一控制（无需在选择器内单独设色）；选择时需联网，保存后自包含不再依赖外部服务"
         />
         <FormKit
           v-else
@@ -381,9 +417,11 @@ onMounted(load)
           type="color"
           label="颜色"
           :help="
-            formState.icon
-              ? '已设置图标：图标本身不受此颜色影响（图标要上色请在图标库选择器内设色，或上传已上色的图片）；此颜色仅在图标加载失败、回落为文字牌时生效'
-              : '文字牌（无图标时的展示形态）的边框与文字颜色'
+            iconSource === 'iconify' && formState.icon
+              ? '图标库字形保存时按此颜色着色；同时用于图标加载失败时的文字回落牌'
+              : formState.icon
+                ? '上传图片保持原有色彩不染色；此颜色仅在图标加载失败、回落为文字牌时生效'
+                : '文字牌（无图标时的展示形态）的边框与文字颜色'
           "
         />
         <FormKit v-model="formState.enabled" type="switch" label="启用" />
