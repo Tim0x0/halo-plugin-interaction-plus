@@ -376,7 +376,16 @@ onMounted(load)
           label="图标"
           :accepts="['image/*']"
         />
-        <FormKit v-model="formState.color" type="color" label="颜色" />
+        <FormKit
+          v-model="formState.color"
+          type="color"
+          label="颜色"
+          :help="
+            formState.icon
+              ? '已设置图标：图标本身不受此颜色影响（图标要上色请在图标库选择器内设色，或上传已上色的图片）；此颜色仅在图标加载失败、回落为文字牌时生效'
+              : '文字牌（无图标时的展示形态）的边框与文字颜色'
+          "
+        />
         <FormKit v-model="formState.enabled" type="switch" label="启用" />
       </FormKit>
       <template #footer>
