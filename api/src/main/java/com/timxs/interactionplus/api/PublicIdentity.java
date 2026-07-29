@@ -187,12 +187,14 @@ public record PublicIdentity(
      * @param identityLineIdentityLimit    身份行身份标识数量上限
      * @param userCardShowcaseBadgeLimit   用户卡展示柜勋章数量上限
      * @param userCardIdentityLimit        用户卡身份标识数量上限
+     * @param userCardLinkTemplate         用户卡头像 / 名字跳转链接模板（{name} = 用户名），空表示不跳转
      */
     public record DisplayConfig(
         boolean identityLineShowPrimaryBadge,
         int identityLineIdentityLimit,
         int userCardShowcaseBadgeLimit,
-        int userCardIdentityLimit
+        int userCardIdentityLimit,
+        String userCardLinkTemplate
     ) {
     }
 }

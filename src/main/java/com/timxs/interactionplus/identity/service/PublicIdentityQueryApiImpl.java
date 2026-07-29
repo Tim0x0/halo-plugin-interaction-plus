@@ -165,6 +165,7 @@ public class PublicIdentityQueryApiImpl implements PublicIdentityQueryApi {
             vo.isIdentityLineShowPrimaryBadge(),
             vo.getIdentityLineIdentityLimit(),
             vo.getUserCardShowcaseBadgeLimit(),
-            vo.getUserCardIdentityLimit());
+            vo.getUserCardIdentityLimit(),
+            vo.getUserCardLinkTemplate());
     }
 }

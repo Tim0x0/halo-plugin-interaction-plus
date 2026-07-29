@@ -141,5 +141,7 @@ public class PublicIdentityVo {
         private int identityLineIdentityLimit = 1;
         private int userCardShowcaseBadgeLimit = 5;
         private int userCardIdentityLimit = 3;
+        /** 用户卡头像 / 名字跳转链接模板（{name} = 用户名），空串表示不跳转。 */
+        private String userCardLinkTemplate = "/authors/{name}";
     }
 }

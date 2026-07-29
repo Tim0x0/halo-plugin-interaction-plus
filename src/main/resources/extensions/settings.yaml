@@ -69,6 +69,11 @@ spec:
               min: 1
               max: 5
               validation: "required|min:1|max:5"
+        - $formkit: text
+          name: userCardLinkTemplate
+          label: 用户卡跳转链接
+          help: 用户卡头像 / 名字点击后跳转的链接模板，{name} 会替换为用户名；留空表示不跳转
+          value: "/authors/{name}"
         - $formkit: number
           name: publicIdentityCacheTtlSeconds
           label: 公开身份缓存时间（秒）

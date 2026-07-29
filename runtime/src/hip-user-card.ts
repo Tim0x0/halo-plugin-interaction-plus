@@ -45,7 +45,8 @@ function formatCount(value: number): string {
  * 尺寸恒定 560×296（设计稿 .dev/card-style-system.html 的满配自然高），不随内容浮动。
  *
  * 全平台点击触发（主流论坛用户卡同款：再点触发元素即关闭；键盘 Enter/Space 等效）；
- * 外点、Esc、窄屏滚动关闭。桌面端锚定触发元素并做视口钳制（shift 语义），
+ * 外点、Esc、窄屏滚动关闭。卡内头像 / 名字可跳转用户页（display.userCardLinkTemplate
+ * 站长可配，留空关闭）。桌面端锚定触发元素并做视口钳制（shift 语义），
  * 窄屏（≤640px）切换为固定全宽卡 + 半透明遮罩（移动端主流形态），
  * 桌面端 560×296 恒定尺寸与内容布局不受影响。
  */
@@ -145,6 +146,22 @@ export class HipUserCard extends HipElement {
     const display = identity.display
     const marksLimit = display?.userCardIdentityLimit ?? 3
     const showcaseLimit = display?.userCardShowcaseBadgeLimit ?? 5
+
+    // 卡内跳转（主流两段式导航：列表处点开卡，卡内点头像 / 名字进用户页）：
+    // 链接模板站长可配，{name} 替换为账号用户名（非显示名），留空即整体关闭；
+    // encodeURIComponent 是出口编码不变式（干净用户名下为空操作，堵 API 侧脏数据拼歪 URL）
+    const linkTemplate = (display?.userCardLinkTemplate || '').trim()
+    const linkUserName = identity.userName || fallbackName
+    const profileUrl =
+      linkTemplate && linkUserName
+        ? linkTemplate.replace(/\{name\}/g, encodeURIComponent(linkUserName))
+        : ''
+    const avatarBlock = profileUrl
+      ? `<a class="avatar-wrap plink" href="${escapeHtml(profileUrl)}">${avatarHtml(identity, fallbackName)}</a>`
+      : `<span class="avatar-wrap">${avatarHtml(identity, fallbackName)}</span>`
+    const nameBlock = profileUrl
+      ? `<a class="plink" href="${escapeHtml(profileUrl)}">${nameHtml(identity)}</a>`
+      : nameHtml(identity)
 
     const primary = identity.decorations?.primaryBadge
     const primaryHtml = primary?.url
@@ -252,36 +269,6 @@ export class HipUserCard extends HipElement {
         /* 窄屏遮罩：仅移动端全宽形态有视觉（媒体查询内定义），桌面恒不可见 */
         .cloak {
           display: none;
-        }
-        /* 窄屏（≤640px）：弃锚定，切固定全宽卡（移动端主流用户卡形态）——
-           贴顶、放开定高、内部滚动、半透明遮罩。桌面端布局与恒定尺寸不受此块影响 */
-        @media (max-width: 640px) {
-          .card {
-            position: fixed;
-            left: 12px !important; /* 压过桌面钳制写入的内联 left（如跨断点 resize 残留） */
-            right: 12px;
-            top: 12px;
-            width: auto;
-            max-width: none;
-            max-height: 85vh;
-            overflow-y: auto;
-          }
-          .surface {
-            height: auto;
-          }
-          /* 说明区放宽：窄屏行容量比桌面少约四成，钳制提至 5 行对齐桌面三行的内容量；
-             本形态卡高已浮动、85vh 滚动兜底，定高随之放开，短说明自然收缩 */
-          .bio {
-            height: auto;
-            -webkit-line-clamp: 5;
-          }
-          .cloak--visible {
-            display: block;
-            position: fixed;
-            inset: 0;
-            z-index: 9998;
-            background: rgba(0, 0, 0, 0.5);
-          }
         }
         /* 背景层：装扮素材全彩 cover，水平垂直居中（主流锚定）。
            卡片总高恒定（surface 定高），cover 裁切基准 560×296 固定——
@@ -501,6 +488,64 @@ export class HipUserCard extends HipElement {
           font-size: 12px;
           color: var(--hip-card-text-muted, #8b949e);
         }
+        /* 卡内跳转链接（头像 / 名字）：颜色交给内部元素（nameStyle 不被链接色覆盖），
+           无下划线——可点性由用户卡语境与指针表达，真实 <a> 保住中键 / Ctrl 新开 */
+        .plink {
+          color: inherit;
+          text-decoration: none;
+        }
+        /* 窄屏（≤640px）：弃锚定，切固定全宽卡（移动端主流用户卡形态）——
+           贴顶、放开定高、内部滚动、半透明遮罩。桌面端布局与恒定尺寸不受此块影响。
+           ⚠ 本块必须位于样式表末尾：与基础规则同特异性，媒体查询不加权，
+           全靠源顺序压过（曾因置于基础规则之前致 .surface/.bio 覆盖失效） */
+        @media (max-width: 640px) {
+          .card {
+            position: fixed;
+            left: 12px !important; /* 压过桌面钳制写入的内联 left（如跨断点 resize 残留） */
+            right: 12px;
+            top: 12px;
+            width: auto;
+            max-width: none;
+            max-height: 85vh;
+            overflow-y: auto;
+          }
+          .surface {
+            height: auto;
+            padding-left: 16px;
+            padding-right: 16px;
+          }
+          /* 内容降档（Discourse 式断点按元素降规格，非整卡缩放）：
+             桌面规格在窄卡上占比失衡（96 头像占 366 宽卡 26%，桌面仅 17%），
+             头像 96→72、留白与字号随之收拢；头像框 124% 相对制自动跟缩 */
+          .avatar-wrap {
+            left: 16px;
+            top: -36px;
+            width: 72px;
+            height: 72px;
+          }
+          .avatar--fallback {
+            font-size: 26px;
+          }
+          .head {
+            margin-left: 88px;
+          }
+          .name {
+            font-size: 18px;
+          }
+          /* 说明区放宽：窄屏行容量比桌面少约四成，钳制提至 5 行对齐桌面三行的内容量；
+             本形态卡高已浮动、85vh 滚动兜底，定高随之放开，短说明自然收缩 */
+          .bio {
+            height: auto;
+            -webkit-line-clamp: 5;
+          }
+          .cloak--visible {
+            display: block;
+            position: fixed;
+            inset: 0;
+            z-index: 9998;
+            background: rgba(0, 0, 0, 0.5);
+          }
+        }
       </style>
       <span class="trigger" tabindex="0"><slot>${escapeHtml(identity.displayName)}</slot></span>
       <div class="cloak"></div>
@@ -508,9 +553,9 @@ export class HipUserCard extends HipElement {
         <div class="card-bg"${backgroundStyle}></div>
         <div class="inner">
           <div class="surface">
-            <span class="avatar-wrap">${avatarHtml(identity, fallbackName)}</span>
+            ${avatarBlock}
             <div class="head">
-              <div class="name-row">${nameHtml(identity)}${marksInner}${primaryHtml}</div>
+              <div class="name-row">${nameBlock}${marksInner}${primaryHtml}</div>
               ${titleInner ? `<div class="title-row">${titleInner}</div>` : ''}
             </div>
             ${bioHtml}

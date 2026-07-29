@@ -23,6 +23,9 @@ public class DisplaySetting {
     // Public identity 缓存 TTL（秒），0 表示关闭缓存
     private int publicIdentityCacheTtlSeconds = 30;
 
+    // 用户卡头像 / 名字点击跳转链接模板，{name} 占位符替换为用户名；留空表示不跳转
+    private String userCardLinkTemplate = "/authors/{name}";
+
     // ── 扁平委托：保持调用方按 display.isEnabledXxx() / getXxx() 直接读取 ──
 
     @JsonIgnore

@@ -86,6 +86,8 @@ export interface PublicIdentity {
     identityLineIdentityLimit: number
     userCardShowcaseBadgeLimit: number
     userCardIdentityLimit: number
+    /** 用户卡头像 / 名字跳转链接模板（{name} = 用户名）；空或缺失（旧快照）表示不跳转 */
+    userCardLinkTemplate?: string
   }
 }
 

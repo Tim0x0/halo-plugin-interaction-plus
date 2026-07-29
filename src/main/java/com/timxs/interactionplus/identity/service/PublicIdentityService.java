@@ -253,6 +253,7 @@ public class PublicIdentityService {
         config.setIdentityLineIdentityLimit(display.getIdentityLineIdentityLimit());
         config.setUserCardShowcaseBadgeLimit(display.getUserCardShowcaseBadgeLimit());
         config.setUserCardIdentityLimit(display.getUserCardIdentityLimit());
+        config.setUserCardLinkTemplate(display.getUserCardLinkTemplate());
     }
 
     // ── 身份标识 ──

@@ -253,7 +253,8 @@ Decoration {
 }
 
 DisplayConfig     { identityLineShowPrimaryBadge, identityLineIdentityLimit,
-                    userCardShowcaseBadgeLimit, userCardIdentityLimit }
+                    userCardShowcaseBadgeLimit, userCardIdentityLimit,
+                    userCardLinkTemplate }                                 用户卡跳转链接模板（{name} = 用户名），空表示不跳转
 ```
 
 - 列表字段永不为 `null`（无则空列表）。

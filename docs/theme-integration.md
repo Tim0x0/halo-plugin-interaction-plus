@@ -61,6 +61,8 @@
 背景素材按 560:296 比例居中裁切恒定，推荐素材 1120×592）；个人说明区固定三行（空值占位）；
 数据行内置文章 / 评论 / 勋章计数，并自动接入其他插件贡献的统计项。
 **点击触发元素显示 / 再点关闭**（键盘 Enter/Space 等效），外点 / Esc 关闭；
+卡内**头像与名字可点击跳转用户页**——链接模板在后台「装扮展示」设置（`{name}` 替换为用户名，
+默认 `/authors/{name}` 即 Halo 主题作者页；主题没有作者页或想关闭跳转时清空该设置即可）；
 桌面端锚定触发元素展开并在水平方向自动钳制在视口内，窄屏（≤640px）切换为固定全宽卡 +
 半透明遮罩、高度随内容自适应（上限 85vh 内部滚动）、页面滚动即关闭：
 
@@ -168,7 +170,7 @@ Base：`/apis/api.interaction-plus.timxs.com/v1alpha1`（游客可访问）。
     "decorations": { "total": 12, "badge": 9, "avatarFrame": 1, "title": 1, "nameStyle": 1, "cardBackground": 0 },
     "extras": [{ "source": "some-qa-plugin", "key": "accepted", "label": "采纳", "value": "23" }]
   },
-  "display": { "identityLineShowPrimaryBadge": true, "identityLineIdentityLimit": 1, "userCardShowcaseBadgeLimit": 3, "userCardIdentityLimit": 3 }
+  "display": { "identityLineShowPrimaryBadge": true, "identityLineIdentityLimit": 1, "userCardShowcaseBadgeLimit": 3, "userCardIdentityLimit": 3, "userCardLinkTemplate": "/authors/{name}" }
 }
 ```
 
