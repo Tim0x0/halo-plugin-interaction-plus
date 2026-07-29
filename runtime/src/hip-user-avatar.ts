@@ -1,5 +1,5 @@
 import { HipElement } from './base'
-import { avatarHtml, AVATAR_FRAME_CSS, AVATAR_IMG_CSS } from './card-parts'
+import { avatarHtml, AVATAR_FRAME_CSS, AVATAR_IMG_CSS, BOX_SIZING_CSS } from './card-parts'
 import { safeCssSize } from './identity'
 
 /**
@@ -19,6 +19,7 @@ export class HipUserAvatar extends HipElement {
 
     this.shadow.innerHTML = `
       <style>
+        ${BOX_SIZING_CSS}
         :host {
           display: inline-block;
           position: relative;

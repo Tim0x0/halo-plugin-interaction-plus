@@ -1,6 +1,6 @@
 import { HipElement } from './base'
 import { escapeHtml } from './identity'
-import { identityMarksHtml, nameHtml, titleHtml } from './card-parts'
+import { BOX_SIZING_CSS, identityMarksHtml, nameHtml, titleHtml } from './card-parts'
 
 /**
  * hip-user-identity：昵称（含样式）+ 身份标识 + 称号 + 主勋章。
@@ -29,6 +29,7 @@ export class HipUserIdentity extends HipElement {
 
     this.shadow.innerHTML = `
       <style>
+        ${BOX_SIZING_CSS}
         :host {
           display: inline-flex;
           align-items: center;

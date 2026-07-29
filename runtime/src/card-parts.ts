@@ -32,6 +32,22 @@ export function avatarHtml(identity: PublicIdentity | null, fallbackName: string
 }
 
 /**
+ * Shadow DOM 盒模型基线（所有 hip-* 组件样式首行引入）。
+ * 宿主页的 reset/preflight（如 Tailwind 的 * { box-sizing: border-box }）穿不进
+ * shadow root，box-sizing 又是非继承属性——组件内若不自声明，一律回落浏览器
+ * 默认 content-box，而本插件全部「定高 + padding」布局（卡片 surface 236 等）
+ * 与 Console 预览（跑在带 preflight 的 Console 页里）都以 border-box 为前提。
+ * 规约「Shadow DOM 布局关键属性必须显式声明」的第二例（第一例是 display）。
+ */
+export const BOX_SIZING_CSS = `
+        *,
+        *::before,
+        *::after {
+          box-sizing: border-box;
+        }
+`
+
+/**
  * 头像框覆盖层样式。124% 为实测最佳的框-头像视觉比例，
  * 前提是素材图案画满画布（上传提示已约定）。runtime 侧仅此一处定义；
  * ⚠ Console 预览（ui/src/components/DecorationPreview.vue 的

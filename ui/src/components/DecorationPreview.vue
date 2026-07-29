@@ -507,7 +507,7 @@ const cardScaleStyle = computed(() => ({
 .hip-preview__surface {
   position: relative;
   /* 高度定死使卡片总高恒为 296（60 露出带 + 236，取设计稿满配自然高 + 防压缩余量）：
-     不随预览内容浮动，背景裁切基准固定；余量由展柜行沉底吸收（同步 hip-user-card）。
+     不随预览内容浮动，背景裁切基准固定；余量由数据行起的元信息组沉底吸收（同步 hip-user-card）。
      ⚠ 不可加 overflow:hidden——头像骑缝上探出 surface 会被裁半 */
   height: 236px;
   background: rgba(255, 255, 255, 0.85);
@@ -560,9 +560,11 @@ const cardScaleStyle = computed(() => ({
 .hip-preview__card-name-row .hip-preview__mark {
   font-size: 12px;
 }
+/* 称号行：文字 / 整图两形态统一行高（取整图 32px 上限），换形态不改卡内节奏（同步 hip-user-card） */
 .hip-preview__title-line {
   display: flex;
   align-items: center;
+  min-height: 32px;
 }
 .hip-preview__card-title {
   display: inline-flex;
@@ -594,8 +596,10 @@ const cardScaleStyle = computed(() => ({
 .hip-preview__bio--empty {
   color: #a3abb5;
 }
-/* 数据行：行内串 wrap 扩容，数字等宽 */
+/* 数据行：行内串 wrap 扩容，数字等宽；与展柜行成元信息组沉底，
+   固定卡高的中部留白落在说明区与本行之间（正文 / 元信息分界处） */
 .hip-preview__dstats {
+  margin-top: auto;
   display: flex;
   flex-wrap: wrap;
   gap: 6px 22px;
@@ -605,14 +609,14 @@ const cardScaleStyle = computed(() => ({
   color: #8b949e;
 }
 .hip-preview__di b {
-  font-size: 14px;
+  font-size: 15px;
   color: #24292f;
   font-weight: 600;
   margin-right: 4px;
   font-variant-numeric: tabular-nums;
 }
 /* 勋章展柜行：34px 方形收藏格，hover 底色加深（无浮动动效）；
-   沉底贴卡底，固定卡高下的中部留白由此吸收 */
+   数据行缺席时接棒沉底，有数据行时归零并入元信息组（间距回落 gap 9px） */
 .hip-preview__shelf-row {
   margin-top: auto;
   display: flex;
@@ -620,6 +624,9 @@ const cardScaleStyle = computed(() => ({
   justify-content: space-between;
   border-top: 1px solid rgba(31, 35, 40, 0.1);
   padding-top: 7px;
+}
+.hip-preview__dstats ~ .hip-preview__shelf-row {
+  margin-top: 0;
 }
 .hip-preview__shelf {
   display: flex;

@@ -2,6 +2,7 @@ import { HipElement } from './base'
 import {
   AVATAR_FRAME_CSS,
   AVATAR_IMG_CSS,
+  BOX_SIZING_CSS,
   avatarHtml,
   escapeCssUrl,
   escapeHtml,
@@ -217,6 +218,7 @@ export class HipUserCard extends HipElement {
 
     this.shadow.innerHTML = `
       <style>
+        ${BOX_SIZING_CSS}
         :host {
           display: inline-block;
           position: relative;
@@ -267,6 +269,12 @@ export class HipUserCard extends HipElement {
           .surface {
             height: auto;
           }
+          /* 说明区放宽：窄屏行容量比桌面少约四成，钳制提至 5 行对齐桌面三行的内容量；
+             本形态卡高已浮动、85vh 滚动兜底，定高随之放开，短说明自然收缩 */
+          .bio {
+            height: auto;
+            -webkit-line-clamp: 5;
+          }
           .cloak--visible {
             display: block;
             position: fixed;
@@ -293,7 +301,7 @@ export class HipUserCard extends HipElement {
         }
         /* 内容层：平色半透明素玻璃（无模糊无渐变），暗色主题覆盖 surface 变量组即可。
            高度定死使卡片总高恒为 296（60 露出带 + 236，取设计稿满配自然高 + 防压缩余量）：
-           不随佩戴内容浮动，背景裁切基准固定、全站名片规格统一；余量由展柜行沉底吸收。
+           不随佩戴内容浮动，背景裁切基准固定、全站名片规格统一；余量由数据行起的元信息组沉底吸收。
            ⚠ 此处不可加 overflow:hidden——头像骑缝上探出 surface，会被裁掉一半；
            极端内容的截断由卡片层的 overflow:hidden 兜底（超出即出卡） */
         .surface {
@@ -388,9 +396,12 @@ export class HipUserCard extends HipElement {
           object-fit: contain;
           vertical-align: middle;
         }
+        /* 称号行：文字 / 整图两形态统一行高（取整图 32px 上限），换形态不改卡内节奏。
+           ⚠ 同步 DecorationPreview */
         .title-row {
           display: flex;
           align-items: center;
+          min-height: 32px;
         }
         .title {
           display: inline-flex;
@@ -424,8 +435,10 @@ export class HipUserCard extends HipElement {
         .bio--empty {
           color: var(--hip-card-text-muted, #a3abb5);
         }
-        /* 数据行：行内串 wrap 扩容，数字等宽 */
+        /* 数据行：行内串 wrap 扩容，数字等宽；与展柜行成元信息组沉底，
+           固定卡高的中部留白落在说明区与本行之间（正文 / 元信息分界处） */
         .dstats {
+          margin-top: auto;
           display: flex;
           flex-wrap: wrap;
           gap: 6px 22px;
@@ -435,14 +448,14 @@ export class HipUserCard extends HipElement {
           color: var(--hip-card-text-muted, #8b949e);
         }
         .di b {
-          font-size: 14px;
+          font-size: 15px;
           color: var(--hip-card-text, #24292f);
           font-weight: 600;
           margin-right: 4px;
           font-variant-numeric: tabular-nums;
         }
         /* 勋章展柜行：34px 方形收藏格，hover 底色加深（无浮动动效）；
-           沉底贴卡底（名片惯例），固定卡高下的中部留白由此吸收 */
+           数据行缺席时接棒沉底，有数据行时归零并入元信息组（间距回落 gap 9px） */
         .shelf-row {
           margin-top: auto;
           display: flex;
@@ -450,6 +463,9 @@ export class HipUserCard extends HipElement {
           justify-content: space-between;
           border-top: 1px solid var(--hip-card-line, rgba(31, 35, 40, 0.1));
           padding-top: 7px;
+        }
+        .dstats ~ .shelf-row {
+          margin-top: 0;
         }
         .shelf {
           display: flex;
