@@ -208,8 +208,13 @@ public class PublicIdentityService {
             .flatMapSequential(userName -> aggregateAndCache(ctx, userName)
                     .map(Optional::of)
                     .defaultIfEmpty(Optional.empty())
-                    // 单个用户失败不影响整批
-                    .onErrorReturn(Optional.empty())
+                    // 单个用户失败不影响整批；用户不存在 / 被禁用走 empty，
+                    // 到这里的是聚合链真异常，留痕供排查（单用户查询路径不吞，直抛）
+                    .onErrorResume(error -> {
+                        log.error("聚合用户 {} 的公开身份失败，本次批量查询跳过该用户",
+                            userName, error);
+                        return Mono.just(Optional.empty());
+                    })
                     .map(opt -> Map.entry(userName, opt)),
                 IDENTITY_FETCH_CONCURRENCY)
             .collectList()
@@ -646,7 +651,7 @@ public class PublicIdentityService {
             .collectList()
             .timeout(CONTRIBUTOR_TIMEOUT)
             .onErrorResume(e -> {
-                log.warn("统计贡献方 {} 调用失败，本次聚合忽略其贡献项", source, e);
+                log.error("统计贡献方 {} 调用失败，本次聚合忽略其贡献项", source, e);
                 return Mono.just(List.of());
             })
             .flatMapMany(Flux::fromIterable)

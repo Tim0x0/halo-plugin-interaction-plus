@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -61,6 +62,7 @@ import run.halo.app.extension.index.query.Condition;
  * 同源重复授予只延长有效期（新值更晚才刷新）；撤销仅撤自己来源的一条，
  * 撤后仍有其他来源有效授予时不清佩戴、不发收回通知（引用计数语义）。
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DecorationGrantService {
@@ -353,7 +355,11 @@ public class DecorationGrantService {
                                 grant.getMetadata().getName(), heldBefore)));
             })
             .defaultIfEmpty(Outcome.failed(pair, ErrorCodes.ASSET_NOT_FOUND))
-            .onErrorResume(error -> Mono.just(Outcome.failed(pair, "GRANT_ERROR")));
+            .onErrorResume(error -> {
+                // 业务拒绝已在上方转为具体错误码，到这里的是写入层意外异常，留痕供排查
+                log.error("授予新建意外失败：user={}, asset={}", pair.user(), pair.asset(), error);
+                return Mono.just(Outcome.failed(pair, "GRANT_ERROR"));
+            });
     }
 
     /**
@@ -371,7 +377,10 @@ public class DecorationGrantService {
         return client.update(existing)
             .doOnNext(updated -> publicIdentityCache.evict(pair.user()))
             .map(updated -> Outcome.renewed(pair, updated.getMetadata().getName()))
-            .onErrorResume(error -> Mono.just(Outcome.failed(pair, "GRANT_ERROR")));
+            .onErrorResume(error -> {
+                log.error("授予续期意外失败：user={}, asset={}", pair.user(), pair.asset(), error);
+                return Mono.just(Outcome.failed(pair, "GRANT_ERROR"));
+            });
     }
 
     /**

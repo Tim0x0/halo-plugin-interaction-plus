@@ -128,7 +128,7 @@ public class InteractionPlusNotificationService {
                     .attributes(attributes))))
             .onErrorResume(error -> {
                 // 通知失败不影响主业务
-                log.warn("发送站内通知失败：reasonType={}, user={}", reasonType, userName, error);
+                log.error("发送站内通知失败：reasonType={}, user={}", reasonType, userName, error);
                 return Mono.empty();
             });
     }
@@ -147,7 +147,7 @@ public class InteractionPlusNotificationService {
             .switchIfEmpty(Mono.defer(() -> createSubscription(name, reasonType, userName)))
             .onErrorResume(error -> {
                 // 并发重复创建（已存在）或其他异常都不应阻断本次通知发送。
-                log.warn("确保通知订阅失败：reasonType={}, user={}", reasonType, userName, error);
+                log.error("确保通知订阅失败：reasonType={}, user={}", reasonType, userName, error);
                 return Mono.empty();
             })
             .then();

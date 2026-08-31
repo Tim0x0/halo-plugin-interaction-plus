@@ -64,7 +64,12 @@ public class GrantRetentionService {
                         Sort.by(Sort.Order.asc("metadata.name")))
                     .filter(grant -> isExpiredOrRevokedBefore(grant, now, cutoff))
                     .concatMap(grant -> client.delete(grant)
-                        .onErrorResume(e -> Mono.empty()))
+                        .onErrorResume(e -> {
+                            // 单条失败不阻断整轮，下个周期会重试，留 debug 供比对删除数
+                            log.debug("删除失效授予记录 {} 失败，本次跳过",
+                                grant.getMetadata().getName(), e);
+                            return Mono.empty();
+                        }))
                     .count()
                     .doOnNext(deleted -> {
                         if (deleted > 0) {

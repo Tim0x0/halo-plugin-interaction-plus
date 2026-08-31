@@ -362,7 +362,7 @@ public class DecorationProfileService {
             .retryWhen(Retry.max(3)
                 .filter(OptimisticLockingFailureException.class::isInstance))
             .onErrorResume(error -> {
-                log.warn("清理用户 {} 佩戴槽位中的装饰 {} 失败，将由 Public API 过滤兜底",
+                log.error("清理用户 {} 佩戴槽位中的装饰 {} 失败，将由 Public API 过滤兜底",
                     userName, assetName, error);
                 return Mono.empty();
             })

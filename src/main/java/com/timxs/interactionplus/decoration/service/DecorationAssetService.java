@@ -22,6 +22,7 @@ import com.timxs.interactionplus.core.support.SvgSanitizer;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -30,6 +31,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.env.Environment;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -49,6 +51,7 @@ import run.halo.app.infra.ExternalLinkProcessor;
 /**
  * 装饰资产服务：CRUD、状态流转、启用强校验（含 SVG 安全）、删除保护。
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DecorationAssetService {
@@ -416,7 +419,16 @@ public class DecorationAssetService {
             })
             // InetAddress 解析为阻塞调用，移出事件循环线程
             .subscribeOn(Schedulers.boundedElastic())
-            .onErrorMap(e -> e instanceof InteractionPlusException ? e : unsafeMaterialUrl())
+            .onErrorMap(e -> {
+                if (e instanceof InteractionPlusException) {
+                    return e;
+                }
+                // 主机名无法解析与安全拦截是两类问题，提示需区分，否则误导排查
+                if (e instanceof UnknownHostException) {
+                    return unresolvableMaterialUrl();
+                }
+                return unsafeMaterialUrl();
+            })
             .then();
     }
 
@@ -437,6 +449,11 @@ public class DecorationAssetService {
     private InteractionPlusException unsafeMaterialUrl() {
         return InteractionPlusException.badRequest(ErrorCodes.VALIDATION_FAILED,
             "素材地址不允许", "外部素材地址仅支持 http/https，且不能指向内网地址。");
+    }
+
+    private InteractionPlusException unresolvableMaterialUrl() {
+        return InteractionPlusException.badRequest(ErrorCodes.VALIDATION_FAILED,
+            "素材地址无法解析", "外部素材地址的主机名无法解析，请检查地址是否正确。");
     }
 
     /**
@@ -463,7 +480,11 @@ public class DecorationAssetService {
                     .retrieve()
                     .bodyToMono(String.class)
                     .timeout(Duration.ofSeconds(5)))
-                .onErrorResume(error -> Mono.empty()))
+                .onErrorResume(error -> {
+                    // 单个候选失败是预期内流程（还有后续候选），留 debug 痕迹供排查全失败
+                    log.debug("读取素材候选地址失败：{}", candidate, error);
+                    return Mono.empty();
+                }))
             .next();
     }
 
