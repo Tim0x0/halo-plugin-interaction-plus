@@ -1,0 +1,308 @@
+<span class="trigger" tabindex="0"><slot>{{displayName}}</slot></span>
+<div class="cloak" popover="manual"></div>
+<div class="card" role="tooltip" popover="manual">
+  <div class="stub">
+    <span class="avatar-wrap"></span>
+  </div>
+  <div class="pass">
+    <div class="stamp">HIP</div>
+    <div class="name-row"></div>
+    <div class="title-row"></div>
+    <div class="bio"></div>
+    <div class="meta">
+      <div class="dstats"></div>
+      <span class="joined"></span>
+    </div>
+    <div class="shelf"></div>
+  </div>
+</div>
+<script>
+  var card = root.querySelector('.card')
+  var cloak = root.querySelector('.cloak')
+  var trigger = root.querySelector('.trigger')
+
+  if (!hipData.loaded) {
+    if (card) card.remove()
+    if (cloak) cloak.remove()
+    if (trigger) {
+      trigger.removeAttribute('tabindex')
+      trigger.style.cursor = 'default'
+    }
+    return
+  }
+
+  var stub = root.querySelector('.stub')
+  var background = hipData.decorations.cardBackground
+  if (background && background.url) {
+    stub.style.backgroundImage =
+      'url("' + hipHelper.escapeCssUrl(background.url) + '")'
+  }
+
+  var avatarWrap = root.querySelector('.avatar-wrap')
+  if (hipData.profileUrl) {
+    var avatarLink = document.createElement('a')
+    avatarLink.className = 'avatar-wrap plink'
+    avatarLink.href = hipData.profileUrl
+    avatarWrap.replaceWith(avatarLink)
+    avatarWrap = avatarLink
+  }
+  avatarWrap.append(hipHelper.renderAvatar(hipData))
+
+  var nameRow = root.querySelector('.name-row')
+  var name = hipHelper.renderName(hipData)
+  if (hipData.profileUrl) {
+    var nameLink = document.createElement('a')
+    nameLink.className = 'plink'
+    nameLink.href = hipData.profileUrl
+    nameLink.append(name)
+    nameRow.append(nameLink)
+  } else {
+    nameRow.append(name)
+  }
+  nameRow.append(hipHelper.renderMarks(hipData), hipHelper.renderBadge(hipData))
+
+  var titleRow = root.querySelector('.title-row')
+  titleRow.append(hipHelper.renderTitle(hipData))
+  if (!titleRow.firstChild) {
+    titleRow.remove()
+  }
+
+  var bio = root.querySelector('.bio')
+  if (hipData.bio) {
+    bio.textContent = hipData.bio
+  } else {
+    bio.classList.add('bio--empty')
+    bio.textContent = '这张通行证还没写备注'
+  }
+
+  function formatCount(value) {
+    if (typeof value !== 'number' || !isFinite(value) || value < 0) {
+      return '0'
+    }
+    if (value < 10000) {
+      return value.toLocaleString('en-US')
+    }
+    var w = value / 10000
+    if (w >= 100) {
+      return Math.round(w) + '万'
+    }
+    return Math.round(w * 10) / 10 + '万'
+  }
+
+  var stats = hipData.stats
+  var dstats = root.querySelector('.dstats')
+  if (stats) {
+    var items = [
+      { label: '文章', value: formatCount(stats.posts) },
+      { label: '评论', value: formatCount(stats.comments) }
+    ]
+    if (stats.decorations) {
+      items.push({ label: '勋章', value: formatCount(stats.decorations.badge) })
+    }
+    var extras = stats.extras || []
+    extras.forEach(function (extra) {
+      if (extra && extra.label && extra.value && items.length < 4) {
+        items.push({ label: extra.label, value: extra.value })
+      }
+    })
+    items.forEach(function (item) {
+      var cell = document.createElement('span')
+      cell.className = 'di'
+      var strong = document.createElement('b')
+      strong.textContent = item.value
+      cell.append(strong, item.label)
+      dstats.append(cell)
+    })
+  }
+  if (!dstats.firstChild) {
+    dstats.remove()
+  }
+
+  var shelf = root.querySelector('.shelf')
+  var showcase = (hipData.decorations.badgeShowcase || []).filter(function (badge) {
+    return badge && badge.url
+  })
+  showcase.forEach(function (badge) {
+    var slot = document.createElement('span')
+    slot.className = 'slot'
+    slot.title = badge.displayName || ''
+    var image = document.createElement('img')
+    image.alt = badge.displayName || ''
+    image.loading = 'lazy'
+    image.addEventListener('error', function () {
+      image.style.display = 'none'
+    })
+    image.src = badge.url
+    slot.append(image)
+    shelf.append(slot)
+  })
+
+  var badgeTotal = stats && stats.decorations ? stats.decorations.badge : null
+  if (showcase.length && typeof badgeTotal === 'number' && badgeTotal > showcase.length) {
+    var more = document.createElement('span')
+    more.className = 'slot slot--more'
+    more.title = '共 ' + badgeTotal + ' 枚'
+    more.textContent = '+' + (badgeTotal - showcase.length)
+    shelf.append(more)
+  }
+  if (!shelf.firstChild) {
+    shelf.remove()
+  }
+
+  var joined = root.querySelector('.joined')
+  var joinedAt = hipData.registeredAt ? new Date(hipData.registeredAt) : null
+  if (joinedAt && !isNaN(joinedAt.getTime())) {
+    var month = joinedAt.getMonth() + 1
+    joined.textContent =
+      joinedAt.getFullYear() + '.' + (month < 10 ? '0' + month : month) + ' 签发'
+  } else {
+    joined.remove()
+  }
+
+  var meta = root.querySelector('.meta')
+  if (meta && !dstats.firstChild && !joined.textContent) {
+    meta.remove()
+  }
+
+  var visible = false
+  var hideTimer = null
+  var placeTicking = false
+  var canPopover = typeof card.showPopover === 'function'
+
+  function isNarrow() {
+    return window.matchMedia('(max-width: 640px)').matches
+  }
+
+  function enterLayer(element) {
+    if (!canPopover || !element.hasAttribute('popover') || element.matches(':popover-open')) {
+      return
+    }
+    try {
+      element.showPopover()
+    } catch (error) {}
+  }
+
+  function leaveLayer(element) {
+    if (!canPopover || !element.hasAttribute('popover') || !element.matches(':popover-open')) {
+      return
+    }
+    try {
+      element.hidePopover()
+    } catch (error) {}
+  }
+
+  function place() {
+    if (isNarrow()) {
+      card.style.left = ''
+      card.style.top = ''
+      return
+    }
+    var rect = host.getBoundingClientRect()
+    var padding = 12
+    var width = card.offsetWidth || 420
+    var height = card.offsetHeight || 200
+    card.style.left =
+      Math.min(
+        Math.max(rect.left, padding),
+        Math.max(padding, window.innerWidth - width - padding)
+      ) + 'px'
+    var top = rect.bottom + 8
+    if (top + height + padding > window.innerHeight && rect.top - height - 8 >= padding) {
+      top = rect.top - height - 8
+    }
+    card.style.top =
+      Math.min(
+        Math.max(top, padding),
+        Math.max(padding, window.innerHeight - height - padding)
+      ) + 'px'
+  }
+
+  function onViewportChange() {
+    if (!visible) {
+      return
+    }
+    if (isNarrow()) {
+      toggle(false)
+      return
+    }
+    if (placeTicking) {
+      return
+    }
+    placeTicking = true
+    window.requestAnimationFrame(function () {
+      placeTicking = false
+      if (visible && !isNarrow()) {
+        place()
+      }
+    })
+  }
+
+  function toggle(next) {
+    visible = next
+    window.clearTimeout(hideTimer)
+    if (visible) {
+      if (isNarrow()) {
+        enterLayer(cloak)
+      }
+      enterLayer(card)
+      place()
+      window.requestAnimationFrame(function () {
+        if (visible) {
+          card.classList.add('card--visible')
+          cloak.classList.add('cloak--visible')
+        }
+      })
+      window.addEventListener('scroll', onViewportChange, { passive: true, capture: true })
+      window.addEventListener('resize', onViewportChange)
+    } else {
+      card.classList.remove('card--visible')
+      cloak.classList.remove('cloak--visible')
+      hideTimer = window.setTimeout(function () {
+        if (!visible) {
+          leaveLayer(card)
+          leaveLayer(cloak)
+        }
+      }, 180)
+      window.removeEventListener('scroll', onViewportChange, { capture: true })
+      window.removeEventListener('resize', onViewportChange)
+    }
+  }
+
+  function onDocumentClick(event) {
+    if (visible && !event.composedPath().includes(host)) {
+      toggle(false)
+    }
+  }
+
+  function onKeydown(event) {
+    if (event.key === 'Escape' && visible) {
+      toggle(false)
+    }
+  }
+
+  trigger.addEventListener('click', function (event) {
+    event.stopPropagation()
+    toggle(!visible)
+  })
+  trigger.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      toggle(!visible)
+    }
+  })
+  cloak.addEventListener('click', function () {
+    toggle(false)
+  })
+  document.addEventListener('click', onDocumentClick)
+  document.addEventListener('keydown', onKeydown)
+
+  onCleanup(function () {
+    document.removeEventListener('click', onDocumentClick)
+    document.removeEventListener('keydown', onKeydown)
+    window.removeEventListener('scroll', onViewportChange, { capture: true })
+    window.removeEventListener('resize', onViewportChange)
+    window.clearTimeout(hideTimer)
+    leaveLayer(card)
+    leaveLayer(cloak)
+  })
+</script>

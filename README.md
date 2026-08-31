@@ -80,6 +80,8 @@ Finder 会输出带当前插件版本的 Runtime 地址，使固定文件名对�
 
 组件用法、Finder、公开 API、自定义模板见[前台适配指南](docs/theme-integration.md)。
 
+第三方插件接入的完整示例见演示插件 [BBS 社区](https://github.com/Tim0x0/halo-plugin-bbs)（置顶公告与社区帖子的 BBS 插件）。
+
 ## 对外 API（其他插件对接）
 
 均经 Halo `ExtensionGetter` 取用、以可选依赖声明，`interaction-plus` 缺席时自动降级：
