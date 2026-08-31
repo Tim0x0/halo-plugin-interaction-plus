@@ -24,21 +24,13 @@ import reactor.core.publisher.Mono;
  * <p>{@code decorationName} 是装饰的 {@code metadata.name}：站长可在后台装饰编辑页复制，
  * 或外部经 {@link #listGrantable(String)} 拉清单让站长可视化选择。
  *
- * <p>外部插件还需在自身 {@code plugin.yaml} 以<b>可选依赖</b>声明本插件（缺席时不影响外部启动）：
+ * <p>外部插件还需在自身 {@code plugin.yaml} 声明 {@code interaction-plus} 可选依赖，
+ * 版本范围为 {@code >=1.0.0}，并使用 {@code api:1.0.0} 构件。完整配置见对外插件 API 对接指南。
  *
- * <pre>{@code
- * spec:
- *   pluginDependencies:
- *     "interaction-plus?": ">=0.1.0"   # 末尾问号 = 可选依赖
- * }</pre>
- *
- * <p>用法对齐 halo-dev 官方 {@code plugin-ai-foundation}（{@code AiModelService}）被
- * {@code plugin-live2d} 经 {@code getEnabledExtension} 调用的范式。
- *
- * <p><b>稳定性</b>：随 {@code 0.1.x} 以<b>实验性</b>状态发布——契约已定型但尚未经大规模生产验证，
- * 可能随首批接入者的反馈微调；调整将保持前向兼容（只增不改）并同步到对接文档。
+ * <p><b>API 契约版本</b>：{@code 1.0.0}。
  *
  * @author Tim0x0
+ * @since 1.0.0
  */
 public interface DecorationGrantApi extends ExtensionPoint {
 

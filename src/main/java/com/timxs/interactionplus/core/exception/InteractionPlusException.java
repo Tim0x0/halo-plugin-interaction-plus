@@ -50,7 +50,6 @@ public class InteractionPlusException extends ErrorResponseException {
 
     public static InteractionPlusException unprocessable(String code, String title,
         String detail) {
-        // RFC 9110 更名：UNPROCESSABLE_ENTITY 在 Spring 6.2+ 废弃，状态码仍为 422
         return new InteractionPlusException(HttpStatus.UNPROCESSABLE_CONTENT, code, title, detail);
     }
 }

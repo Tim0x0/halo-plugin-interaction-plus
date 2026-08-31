@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-// 列表加载失败错误态（审查报告 F5：失败与空数据可区分，并提供重试入口）
+// 列表加载失败错误态（失败与空数据可区分，并提供重试入口）
 import { VButton } from '@halo-dev/components'
 
 withDefaults(

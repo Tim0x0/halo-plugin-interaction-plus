@@ -27,7 +27,7 @@ import run.halo.app.extension.controller.ControllerBuilder;
 import run.halo.app.extension.controller.Reconciler;
 
 /**
- * 装饰资产删除级联清理（对齐 Halo 核心的 finalizer + Reconciler 模式）。
+ * 装饰资产删除级联清理（finalizer + Reconciler 模式）。
  *
  * <p>无论删除来自 Console API、Extension 自动 CRUD API 还是其它代码的
  * {@code client.delete()}，删除只会先打 deletionTimestamp，由本 Reconciler

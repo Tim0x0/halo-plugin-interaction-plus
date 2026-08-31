@@ -1,7 +1,5 @@
 <script lang="ts" setup>
-// 列表筛选下拉（复刻 Halo 官方内部组件 FilterDropdown）
-// 官方源码位于 halo 仓库 ui/src/components/filter/FilterDropdown.vue（未进组件库），
-// 此处以 scoped CSS 替代官方 Tailwind 类。再次点击已选项 = 清除该筛选。
+// 列表筛选下拉（单选）：再次点击已选项 = 清除该筛选。
 import { computed } from 'vue'
 import { IconArrowDown, VDropdown, VDropdownItem } from '@halo-dev/components'
 
@@ -49,9 +47,7 @@ function handleSelect(item: FilterItem) {
       <span v-if="!selectedItem" class="hip-filter-dropdown__label">
         {{ label }}
       </span>
-      <span v-else class="hip-filter-dropdown__label">
-        {{ label }}：{{ selectedItem.label }}
-      </span>
+      <span v-else class="hip-filter-dropdown__label"> {{ label }}：{{ selectedItem.label }} </span>
       <span class="hip-filter-dropdown__arrow">
         <IconArrowDown />
       </span>

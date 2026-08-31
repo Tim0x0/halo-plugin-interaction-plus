@@ -37,11 +37,7 @@ function onConfirm(assets: DecorationAsset[]) {
   <div class="hip-deco-picker">
     <div class="hip-deco-picker__label">装饰</div>
     <div v-if="modelValue.length" class="hip-deco-picker__chips">
-      <span
-        v-for="asset in modelValue"
-        :key="asset.metadata.name"
-        class="hip-deco-picker__chip"
-      >
+      <span v-for="asset in modelValue" :key="asset.metadata.name" class="hip-deco-picker__chip">
         <AssetThumb
           size="sm"
           class="hip-deco-picker__chip-thumb"
@@ -50,7 +46,9 @@ function onConfirm(assets: DecorationAsset[]) {
           :payload="asset.spec.payload"
           :display-name="asset.spec.displayName"
         />
-        <span class="hip-deco-picker__chip-name">{{ asset.spec.displayName }}</span>
+        <span class="hip-deco-picker__chip-name" :title="asset.spec.displayName">
+          {{ asset.spec.displayName }}
+        </span>
         <button
           type="button"
           class="hip-deco-picker__chip-remove"

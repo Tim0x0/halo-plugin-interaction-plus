@@ -12,6 +12,7 @@ bin/
 
 ### Node
 node_modules/
+/.pnpm-store/
 
 ### STS
 .apt_generated

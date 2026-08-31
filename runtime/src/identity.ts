@@ -2,7 +2,9 @@
 
 export interface IdentityMark {
   displayName: string
+  /** 图标 data URL（Iconify 字形）或图片地址；与 color 互斥（非空时 color 恒为空） */
   icon?: string
+  /** 文字牌颜色；与 icon 互斥（非空时 icon 恒为空） */
   color?: string
   priority?: number
 }
@@ -13,9 +15,7 @@ export interface DecorationVo {
   displayName?: string
   url?: string
   mediaType?: string
-  /** 称号形态：text=文字牌（默认），image=整图（图片在 url） */
-  titleMode?: 'text' | 'image'
-  /** 称号文本；image 形态下作为替代文本与加载失败回落 */
+  /** 称号名称；行内场景展示它，同时是称号图的替代文本与加载失败兜底 */
   titleText?: string
   titleColor?: string
   titleBackground?: string
@@ -79,16 +79,50 @@ export interface PublicIdentity {
     cardBackground?: DecorationVo
     nameStyle?: DecorationVo
   }
-  /** 互动统计（旧版本后端 / 旧 data 快照可能缺失，消费方需判空） */
+  /** 互动统计；直接传入的 data 可省略，消费方需判空。 */
   stats?: IdentityStats
-  display: {
-    identityLineShowPrimaryBadge: boolean
-    identityLineIdentityLimit: number
-    userCardShowcaseBadgeLimit: number
-    userCardIdentityLimit: number
-    /** 用户卡头像 / 名字跳转链接模板（{name} = 用户名）；空或缺失（旧快照）表示不跳转 */
-    userCardLinkTemplate?: string
-  }
+  /** 站点级展示策略（站长设置，全站一份），不是该用户的属性 */
+  display: DisplayConfig
+}
+
+/** 身份行场景（hip-user-identity） */
+export interface IdentityLineDisplay {
+  showTitle: boolean
+  showPrimaryBadge: boolean
+  showNameStyle: boolean
+  showIdentityMarks: boolean
+  identityLimit: number
+}
+
+/** 头像场景（hip-user-avatar） */
+export interface AvatarDisplay {
+  showFrame: boolean
+}
+
+/** 用户卡场景（hip-user-card） */
+export interface UserCardDisplay {
+  showTitle: boolean
+  showPrimaryBadge: boolean
+  showShowcase: boolean
+  showNameStyle: boolean
+  showIdentityMarks: boolean
+  showAvatarFrame: boolean
+  showCardBackground: boolean
+  showcaseBadgeLimit: number
+  identityLimit: number
+}
+
+export interface DisplayConfig {
+  identityLine: IdentityLineDisplay
+  avatar: AvatarDisplay
+  userCard: UserCardDisplay
+  /** 昵称 / 用户卡头像跳转链接模板（{name} = 用户名）；空或缺失表示不跳转 */
+  userCardLinkTemplate?: string
+  /**
+   * 无头像占位风格：halo 灰底首字母；hash 按显示名着色。
+   * 只作用于内置 renderAvatar 占位，不改 avatar 字段；缺省按 halo。
+   */
+  avatarFallbackStyle?: 'halo' | 'hash'
 }
 
 const API_BASE = '/apis/api.interaction-plus.timxs.com/v1alpha1'
@@ -135,29 +169,22 @@ export function parseData(raw: string | null): PublicIdentity | null {
 }
 
 /**
- * 仅接受 3/6 位十六进制颜色，非法值返回空串（与后端 HEX_COLOR_PATTERN 对齐）。
- * runtime 以字符串拼接输出 style 属性，hex 白名单杜绝畸形值注入额外 CSS 声明；
- * 所有拼入 style 的颜色字段（昵称样式 / 称号三色 / 标识色）统一走此过滤。
+ * 仅接受 3 / 6 / 8 位十六进制颜色，非法值返回空串（与后端 HEX_COLOR_PATTERN 对齐）。
+ * 8 位是 #RRGGBBAA，用来带透明度。runtime 以字符串拼接输出 style 属性，
+ * hex 白名单杜绝畸形值注入额外 CSS 声明；所有拼入 style 的颜色字段
+ * （昵称样式 / 称号三色 / 标识色）统一走此过滤。
  */
 export function safeHexColor(value?: string | null): string {
-  return value && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value) ? value : ''
+  return value && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value) ? value : ''
 }
 
 /**
- * 仅接受「数字 + px/em/rem/%」的 CSS 长度值，非法值回落 fallback。
- * 标签属性值一律视为不可信输入：长度值插进 <style> 前必须白名单，
- * 否则形如 `40px}</style><img onerror=...>` 的属性值可闭合标签注入 HTML。
- */
-export function safeCssSize(value: string | null, fallback: string): string {
-  return value && /^\d+(\.\d+)?(px|em|rem|%)$/.test(value) ? value : fallback
-}
-
-/**
- * 根据昵称样式生成受控 CSS 文本（不支持渐变时降级第一个颜色）。
+ * 根据昵称样式生成受控 CSS 文本。
  *
- * ⚠ 双实现同步清单：本函数与 Console 预览的 `ui/src/utils/decoration.ts` 的
- * `nameStyleCss`（对象形式）是同一规则的两份实现（不同构建产物、刻意不共包），
- * 改 hex 白名单、渐变角度或降级规则时必须两处同改，否则破坏「预览所见即前台所得」。
+ * ⚠ 双实现同步清单：本函数与 Console 缩略图的 `ui/src/utils/decoration.ts` 的
+ * `nameStyleCss`（对象形式）是同一规则的两份实现（不同构建产物、刻意不共包）。
+ * 改**hex 白名单、渐变角度（90deg）、声明组合、降级规则**时必须两处同改，
+ * 否则后台缩略图与前台效果不一致 —— 不报错、只是站长看到的与访客不同。
  */
 export function nameStyleCss(nameStyle?: { mode: string; colors: string[] }): string {
   if (!nameStyle || !nameStyle.colors || nameStyle.colors.length === 0) {

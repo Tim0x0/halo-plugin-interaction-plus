@@ -5,11 +5,11 @@ import reactor.core.publisher.Flux;
 
 /**
  * 用户统计贡献扩展点：其他插件把自己领域内的用户统计项（如问答插件的「采纳数」、
- * 打赏插件的「获赏数」）贡献到 interaction-plus 的用户悬浮卡数据行与公开身份数据中。
+ * 打赏插件的「获赏数」）贡献到 interaction-plus 的用户卡数据行与公开身份数据中。
  *
  * <p><b>数据所有权</b>：统计数据始终保存在贡献方自己的模型里，本扩展点只在
  * interaction-plus 聚合公开身份（缓存未命中）时被调用一次；返回结果随公开身份整体缓存
- * （站长可配 TTL，默认 30 秒），并经由 hip-* 组件、主题 Finder、公开 HTTP API 三个读出口
+ * （站长可配 TTL，默认 30 秒），并经由 hip-* 组件、Halo 模板 Finder、公开 HTTP API 三个读出口
  * 同源下发。实现应保证<b>快速返回</b>（自行缓存慢查询）；单个贡献方有总超时预算，
  * 超时或出错时本次聚合丢弃该贡献方的全部项，不影响其他数据。
  *
@@ -29,21 +29,16 @@ import reactor.core.publisher.Flux;
  *   displayName: "你的插件的统计贡献"
  * }</pre>
  *
- * <p>同时以<b>可选依赖</b>声明本插件（缺席时不影响你的插件启动）：
- *
- * <pre>{@code
- * spec:
- *   pluginDependencies:
- *     "interaction-plus?": ">=0.1.0"
- * }</pre>
+ * <p>实现方还需在自身 {@code plugin.yaml} 声明 {@code interaction-plus} 可选依赖，
+ * 版本范围为 {@code >=1.0.0}，并使用 {@code api:1.0.0} 构件。完整配置见对外插件 API 对接指南。
  *
  * <p><b>数量约束</b>：每个贡献方每用户至多贡献 5 项，超出部分截断；
  * 各字段格式约束见 {@link UserStat}。
  *
- * <p><b>稳定性</b>：随 {@code 0.1.x} 以<b>实验性</b>状态发布——契约已定型但尚未经大规模生产验证，
- * 可能随首批接入者的反馈微调；调整将保持前向兼容（只增不改）并同步到对接文档。
+ * <p><b>API 契约版本</b>：{@code 1.0.0}。
  *
  * @author Tim0x0
+ * @since 1.0.0
  */
 public interface UserStatContributor extends ExtensionPoint {
 

@@ -1,17 +1,30 @@
 # Interaction Plus 对外插件 API 对接指南
 
-面向**其他 Halo 插件开发者**。`interaction-plus` 通过 Halo 扩展点向其他插件开放两个进程内 API：
+面向**其他 Halo 插件开发者**。`interaction-plus` 通过 Halo 扩展点向其他插件开放进程内能力：
 
 | API | 接口 | 方向 | 用途 |
 |---|---|---|---|
 | [发奖 API](#发奖-api) | `DecorationGrantApi` | 写 | 在用户达成你定义的条件时发放 / 撤销装饰（勋章、头像框、称号、名片背景、昵称样式） |
 | [身份查询 API](#身份查询-api) | `PublicIdentityQueryApi` | 读 | 在你的插件后端查询用户公开身份与装扮，内嵌进你自己的接口响应 |
+| [统计贡献](#统计贡献扩展点) | `UserStatContributor` | 反向 | 把你领域内的用户统计项贡献到用户卡数据行与公开身份 |
 
-两个 API 的接入方式完全相同（见[快速开始](#快速开始)），可按需只用其一。
+前两个 API 的接入方式完全相同（见[快速开始](#快速开始)），可按需只用其一。统计贡献是反向扩展点，由本插件调用你的实现。
 
-> **状态**：随 `0.1.x` 以**实验性**状态发布——契约已定型但尚未经大规模生产验证，可能随首批接入者的反馈微调；调整将保持前向兼容（只增不改）并同步到本文档。
+> 对外 API 版本为 `1.0.0`，以下内容是该版本的当前契约。
 >
 > 以下能力仅在 `interaction-plus` **已安装并启用**时可用，请做好[降级](#降级与故障排查)。
+
+## 独立插件前台页加载 Runtime
+
+如果你的插件提供由 Halo 渲染的 Thymeleaf 前台页面，并在页面中输出 `hip-*`，可以直接使用 Interaction Plus 注册到模板引擎的 Finder；不需要额外的版本接口或重定向：
+
+```html
+<th:block th:if="${pluginFinder.available('interaction-plus')}">
+  <script th:src="${interactionPlus.getRuntimeUrl()}"></script>
+</th:block>
+```
+
+`getRuntimeUrl()` 返回带当前安装版本的完整 Runtime 地址，使固定文件名对应当前版本的浏览器缓存。若你的插件已声明 `interaction-plus` 为必需依赖，可以省略外层可用性判断。Finder 属于模板能力；插件 Java 后端要调用数据或发奖，仍按下文使用 `ExtensionGetter`。
 
 ## 快速开始
 
@@ -19,7 +32,7 @@
 
 ### 第 1 步：添加 api 依赖
 
-api 模块发布在 **JitPack**。先加仓库（推荐放在 `settings.gradle` 的 `dependencyResolutionManagement`，或根 `build.gradle`；JitPack 建议排在其他仓库之后）：
+`api` 模块通过 **JitPack** 提供。先添加仓库（推荐放在 `settings.gradle` 的 `dependencyResolutionManagement`，或根 `build.gradle`；JitPack 建议排在其他仓库之后）：
 
 ```gradle
 repositories {
@@ -32,11 +45,11 @@ repositories {
 
 ```gradle
 dependencies {
-    compileOnly 'com.github.Tim0x0.halo-plugin-interaction-plus:api:0.1.0'
+    compileOnly 'com.github.Tim0x0.halo-plugin-interaction-plus:api:1.0.0'
 }
 ```
 
-> api 模块仅含接口 + DTO。坐标说明：`com.github.<GitHub 用户>.<仓库>:<模块>:<版本>` 是 JitPack 多模块约定；版本号对应 `interaction-plus` 的 git tag（`v0.1.0` → 版本 `0.1.0`），以实际发布为准。
+> `api` 模块只包含接口与 DTO；运行时实现由 Interaction Plus `1.0.0` 提供。
 
 ### 第 2 步：声明可选依赖
 
@@ -45,10 +58,10 @@ dependencies {
 ```yaml
 spec:
   pluginDependencies:
-    "interaction-plus?": ">=0.1.0"   # 末尾问号 = 可选依赖（Halo 2.20.11+）
+    "interaction-plus?": ">=1.0.0"   # 末尾问号 = 可选依赖
 ```
 
-可选依赖：`interaction-plus` 没装 / 没启用时，**你的插件照常启动**，只是对应能力不可用。
+可选依赖表示 `interaction-plus` 没装 / 没启用时，**你的插件照常启动**，只是对应能力不可用。
 
 ### 第 3 步：通过 ExtensionGetter 获取实例
 
@@ -111,7 +124,7 @@ GrantResult         { status, grantName }
 RevokeResult        { status }
 ```
 
-`sourcePlugin` 传**你自己的插件标识**（你 `plugin.yaml` 的 `metadata.name`）。用于来源记录与撤销隔离——`revoke` 只会撤**你自己**发放的那条授予，动不到别人（其他插件 / 站长后台）发的。`interaction-plus:` 开头的来源标识为**内部保留**（预留给本插件后续内置的等级 / 积分引擎），外部插件请一律传自己插件的 `metadata.name`。
+`sourcePlugin` 传**你自己的插件标识**（你 `plugin.yaml` 的 `metadata.name`）。用于来源记录与撤销隔离——`revoke` 只会撤**你自己**发放的那条授予，动不到别人（其他插件 / 站长后台）发的。实现只校验非空，不做前缀拦截；请不要占用别人的插件名。
 
 发放结果 `GrantResult.status`：
 
@@ -174,6 +187,7 @@ public class DecorationGrantClient {
 
 ### 发放最佳实践
 
+- **发放只进库存，不自动佩戴**：`grant` 成功后装饰进入用户库存，用户需在「用户中心 → 装扮 → 我的装扮」自行佩戴，前台才会显示。身份标识不走库存、按角色映射即时生效，与本 API 无关。
 - **你发的授予也可能被站长收回**：站长可在后台撤销任何来源的授予（含你发放的），不要假设"发过就永远存在"。持续型场景的周期性重发会自然重建；一次性场景可按 `grant` 返回状态感知。
 - **稀有度准入**：站长可关闭某些稀有度（如传说 / 限定）的「允许外部发放」开关。被关掉的装饰不会出现在 `listGrantable`，`grant` 也会返回 `DECORATION_NOT_EXTERNALLY_GRANTABLE`——这是站长的有意控制，你的插件按结果状态处理即可。
 - **不要硬编码 ulid**：装饰删了重建后 `metadata.name` 会变。建议让站长配置 / 选择，而不是把某个 `asset-xxx` 写死在代码里。
@@ -181,13 +195,13 @@ public class DecorationGrantClient {
 
 ## 身份查询 API
 
-> **与其他读出口同源**：本 API 与公开 HTTP API（`GET /identity/{userName}`）、主题 Finder（`${interactionPlus.getIdentity(...)}`）共用同一聚合服务与缓存，返回内容、判空行为、对用户禁用 / 删除的处理三个出口一致，仅出口形态不同。只读、无副作用，可任意重试。
+> **与其他读出口同源**：本 API 与公开 HTTP API（`GET /identity/{userName}`）、Halo 模板 Finder（`${interactionPlus.getIdentity(...)}`）共用同一聚合服务与缓存，返回内容、判空行为、对用户禁用 / 删除的处理三个出口一致，仅出口形态不同。只读、无副作用，可任意重试。
 
 ### 适用场景：为什么在后端查
 
-已有的两条读通道各有边界：**公开 HTTP API** 给浏览器前端 fetch 用，调用方必须持有 `userName`；**Finder** 注册进模板引擎，只有 Thymeleaf 主题模板取得到（插件容器隔离，其他插件的 Java 代码拿不到）。
+已有的两条读通道各有边界：**公开 HTTP API** 给浏览器前端 fetch 用，调用方必须持有 `userName`；**Finder** 注册进 Halo 模板引擎，任何由 Halo 渲染的 Thymeleaf 模板都可以调用（包括主题与独立插件前台页），但其他插件的 Java 后端受插件容器隔离，不能把 Finder 当进程内服务注入。
 
-**典型缺口**：你想在自己插件的公开 API 响应里内嵌用户装扮（如评论插件给评论作者附带装扮数据），但 Halo 对**评论者 / 回复者**这类互动用户的 `userName` 明确脱敏（公开评论查询只保留 displayName / avatar，`owner.name` 置空、email 转 hash）——前端拿不到用户名，无从调用 HTTP 批量接口，查询必须发生在你的**后端**，`userName` 全程不出服务端。本 API 就是这条通道。
+**典型缺口**：你想在自己插件的公开 API 响应里内嵌用户装扮（如评论插件给评论作者附带装扮数据），但 Halo 公开评论查询**不返回评论者 / 回复者的 `userName`**（只保留 displayName / avatar）——前端拿不到用户名，无从调用 HTTP 批量接口，查询必须发生在你的**后端**。本 API 就是这条通道。
 
 > 口径是**分角色**的：文章 / 页面**作者**的 userName 在 Halo 本来就是公开的（`ContributorVo.name`、作者页 `/authors/{name}`）——目标用户是作者时，前端直接调公开 HTTP API 即可，不必动用本 API。
 
@@ -203,24 +217,24 @@ Flux<PublicIdentity> listIdentities(Collection<String> userNames);    // 批量�
 - 批量自动忽略空白项并去重；**去重后上限 50**，超出以 `IllegalArgumentException` 走 error 通道（与公开 HTTP 批量接口一致），更多请自行分批（评论分页等常见场景一般远小于此）。
 - 查不到 / 被禁用的用户**不出现在结果中**（不占位、不报错），按 `userName()` 关联即可；单个用户聚合失败不影响整批。入参为 `null` / 全空白返回空 `Flux`。
 - `getIdentity` 入参空白以 `IllegalArgumentException` 走 error 通道。
-- 返回的是**当前佩戴**的装扮与身份标识，非装饰墙全量（装饰墙如有进程内需求，将来另行扩展）。
+- 返回的是**当前佩戴**的装扮与身份标识，不提供装饰墙全量列表。
 
-DTO `PublicIdentity` 与 `GET /identity/{userName}` 的 JSON 响应同构，自包含、零二次查询：
+DTO `PublicIdentity` 与 `GET /identity/{userName}` 共用同一聚合源，当前身份与佩戴装饰的展示字段口径一致；数据自包含、零二次查询：
 
 ```text
 PublicIdentity {
-  userName        String            用户名（进程内关联用；见下方脱敏责任）
+  userName        String            用户名（metadata.name）。进程内关联键；喂给 hip-* 的 data 模式时必须保留——默认跳转 /authors/{name} 用它拼 href
   displayName     String            显示名称
   avatar          String?           头像（绝对链接）
   bio             String?           公开简介
-  registeredAt    Instant?          注册时间
+  registeredAt    Instant           注册时间（spec.registeredAt 缺失时回退资源创建时间，恒有值）
   identityMarks   List<IdentityMark>    身份标识（如「管理员」，按角色映射、无需佩戴），优先级降序
   decorations     WornDecorations       当前佩戴的装扮
   stats           Stats                 互动统计（公开口径；含其他插件贡献项）
-  display         DisplayConfig         展示密度配置快照
+  display         DisplayConfig         站点级展示策略快照（按组件场景的开关 / 密度 / 跳转 / 无头像占位风格），非用户属性
 }
 
-IdentityMark      { displayName, icon?, color?, priority }
+IdentityMark      { displayName, icon?, color?, priority }   // icon 与 color 互斥：文字牌用 color，图标(data URL)/图片用 icon；displayName 同时作图标提示与裂图回落
 
 Stats {
   posts           long                  公开文章数（已发布、可见性公开）
@@ -246,30 +260,32 @@ WornDecorations {                    槽位为 null = 未佩戴 / 已失效 / �
 
 Decoration {
   assetName, type, displayName, url?, mediaType?,
-  titleMode?, titleText?, titleColor?, titleBackground?, titleBackgroundSecondary?,   称号专属
+  titleText?, titleColor?, titleBackground?, titleBackgroundSecondary?,     称号专属
   nameStyle?: { mode: solid|gradient, colors[] },                          昵称样式专属
-  rarityName?, rarityDisplayName?, rarityColor?,                           稀有度（已内联）
-  grantedAt?, expiresAt?                                                   本接口当前恒为 null（装饰墙类查询才填充）
+  rarityName?, rarityDisplayName?, rarityColor?                            稀有度（已内联）
 }
 
-DisplayConfig     { identityLineShowPrimaryBadge, identityLineIdentityLimit,
-                    userCardShowcaseBadgeLimit, userCardIdentityLimit,
-                    userCardLinkTemplate }                                 用户卡跳转链接模板（{name} = 用户名），空表示不跳转
+DisplayConfig {
+  identityLine    { showTitle, showPrimaryBadge, showNameStyle, showIdentityMarks, identityLimit }
+  avatar          { showFrame }
+  userCard        { showTitle, showPrimaryBadge, showShowcase, showNameStyle,
+                    showIdentityMarks, showAvatarFrame, showCardBackground,
+                    showcaseBadgeLimit, identityLimit }
+  userCardLinkTemplate    昵称 / 用户卡头像的跳转链接模板（{name} = 用户名），空表示不跳转
+  avatarFallbackStyle     无头像占位：halo 灰底首字母 / hash 按显示名着色；只作用于内置 renderAvatar，不改 avatar 字段
+}
+                  // 站点级策略，非用户属性；自行渲染可整个忽略（见下条）
+                  // 类型总闸不在这里：关了对应 decorations 槽位 / identityMarks 已是空
 ```
 
 - 列表字段永不为 `null`（无则空列表）。
-- 称号双形态：`titleMode` 为 `text` 时按三色渲染文字牌；为 `image` 时图片地址在 `url`，`titleText` 作为替代文本与加载失败回落。
-
-### 脱敏责任：转发给浏览器前必须剥掉 userName
-
-本 API 返回 `userName`，供你在进程内做关联 / 缓存键。但若把查询结果**内嵌进你的公开 API 响应**：
-
-- **必须剥掉 `userName` 再下发**（以及任何可反推用户名的字段）。依据：Halo 对评论者 / 回复者这类互动用户的用户名明确脱敏（防枚举 / 撞库清单）——不要替 Halo 解除它已做的脱敏；且展示渲染不需要 userName，一律剥掉永远无害。`displayName`、`avatar` 及各装扮展示字段可以下发。
-- hip-* runtime 组件的 `data` 属性模式渲染**不依赖 `userName`**——剥掉后的数据可直接喂给组件（见[主题适配指南](theme-integration.md)）。
+- **`display` 是站点级展示策略，不是该用户的属性**：这几项全站一份，与查的是谁无关，随站长改设置而变（缓存会一并失效）。内联在此只为让 `data` 模式零二次查询——把整份喂给 hip-* 就能画。**自己渲染界面的消费方可以整个忽略它**；尤其别拿 `userCard.identityLimit` 之类去裁剪并非用户卡的界面，那是按本插件的组件场景定的，不是给你的场景定的。
+- `userName` 不是可剥的内部字段：内嵌进你的公开响应、再喂给 hip-* 的 `data` 时必须带上。runtime 用它和 `display.userCardLinkTemplate` 算 `profileUrl`；缺了头像 / 名字不跳转。站长清空跳转模板则两处一起关，与字段在不在无关。
+- 称号 = 名称 + 可选的图，没有形态开关：`titleText` 恒非空；`titleColor` / `titleBackground` / `titleBackgroundSecondary` 可空（`#RGB` / `#RRGGBB` / `#RRGGBBAA`，8 位带透明度；空=无专属色 / 无底）。`url` 有值时是称号图、同时 `titleText` 作它的替代文本与加载失败兜底。**行内场景（评论、列表）建议只用 `titleText`**——称号图多是横条插画，缩到一行文字的高度图里的字会看不清；图适合用户卡这类有垂直空间的位置。
 
 ### 完整示例：评论装扮聚合
 
-浏览器请求你的评论列表接口（不变）→ 你在后端组装作者 DTO 时批量查询、附加装扮、剥掉 `userName` → 前端零额外请求、不接触任何用户名。
+浏览器请求你的评论列表接口（不变）→ 你在后端组装作者 DTO 时批量查询、附加装扮 → 前端零额外请求。
 
 把所有引用 `interaction-plus` 类的逻辑**收拢到一个独立组件**（原因见[降级与故障排查](#降级与故障排查)）：
 
@@ -296,14 +312,13 @@ public class AuthorIdentityClient {
 组装响应时（示意）：
 
 ```java
-// 每条评论：owner 为登录用户 → 从 Map 取身份数据附加到作者对象（剥掉 userName），
-// 匿名评论 / 查不到 → 不附加，接口行为与集成前完全一致
+// 每条评论：owner 为登录用户 → 从 Map 取身份数据附加到作者对象，
+// 匿名评论 / 查不到 → 不附加，接口行为与集成前完全一致。
+// 整份 PublicIdentity 可直接当 hip-* 的 data（含 userName）：
+// 缺了它，卡和身份行就算到了 display.userCardLinkTemplate 也拼不出跳转。
 var identity = identityMap.get(comment.getSpec().getOwner().getName());
 if (identity != null) {
-    authorVo.setDecorations(identity.decorations());
-    authorVo.setIdentityMarks(identity.identityMarks());
-    authorVo.setDisplay(identity.display());
-    // 不要把 identity.userName() 放进响应
+    authorVo.setIdentity(identity);
 }
 ```
 
@@ -316,12 +331,9 @@ if (identity != null) {
 
 > 方向与前两个 API 相反：不是你调用 interaction-plus，而是**你提供实现、interaction-plus 在聚合用户身份时调用你**。
 
-把你插件领域内的用户统计项（问答插件的「采纳数」、打赏插件的「获赏数」等）贡献到 interaction-plus 的**用户悬浮卡数据行**与公开身份数据中。数据始终保存在你自己的模型里——interaction-plus 只在聚合公开身份（缓存未命中）时调用一次，结果随公开身份整体缓存（站长可配 TTL，默认 30 秒），并经 hip-* 组件、主题 Finder、公开 HTTP API 三个读出口同源下发。
+把你插件领域内的用户统计项（问答插件的「采纳数」、打赏插件的「获赏数」等）贡献到 interaction-plus 的**用户卡数据行**与公开身份数据中。数据始终保存在你自己的模型里——interaction-plus 只在聚合公开身份（缓存未命中）时调用一次，结果随公开身份整体缓存（站长可配 TTL，默认 30 秒），并经 hip-* 组件、Halo 模板 Finder、公开 HTTP API 三个读出口同源下发。
 
-### 与发奖 API 的通道分工
-
-- **业务统计**（采纳数、获赏数这类属于你自己领域的计数）→ 走本扩展点，数据留在你家，展示时报数；
-- **数值资产**（给用户加积分 / 经验这类需要记账的）→ 走后续的喂分契约（规划中），必须进 interaction-plus 的账本。
+本扩展点只接收展示用的业务统计（如采纳数、获赏数）；积分、经验等记账资产不属于这个接口。
 
 ### 接入三步
 
@@ -358,7 +370,7 @@ spec:
 
 **为什么必须**：每个贡献项对外携带的**来源插件 id 由系统盖章**——取自该 ED 上 Halo 自动打的 `plugin.halo.run/plugin-name` label，你无法自报也无法冒充他人；查不到 ED 归属的实现，其贡献项会被**整体忽略**（interaction-plus 侧打 warn 日志）。消费方以 `来源插件 id + key` 为完整标识，不同插件的同名 `key` 互不冲突。
 
-**第 3 步**：以可选依赖声明 `"interaction-plus?": ">=0.1.0"`（与前述 API 相同；本插件缺席时你的实现只是无人调用，不影响你启动）。
+**第 3 步**：按[快速开始](#快速开始)声明可选依赖（本插件缺席时你的实现只是无人调用，不影响你启动）。
 
 ### 约束与容错（超限即丢弃，不报错）
 
@@ -375,25 +387,44 @@ spec:
 ## 降级与故障排查
 
 - **可选依赖缺席**：`interaction-plus` 没装时，它的类（含上述两个接口）不在 classpath。**务必把引用这些类的代码隔离在单独的类 / 组件里**，避免在主流程触发 `NoClassDefFoundError`；并对调用结果做 `onErrorResume` / 空值降级。可参考官方 `plugin-live2d` 对 `plugin-ai-foundation` 的可用性判断写法。
-- **前向兼容**：接口响应 / DTO 未来可能**新增字段**（如等级 / 积分能力上线后的展示属性），消费方请忽略未知字段，勿做穷举式强校验。
+- 只读取业务需要的 DTO 字段，不要对整个对象做穷举式字段校验。
 
 ### 取不到实现？自检清单
 
 `getEnabledExtension(接口类)` 取不到实现时只返回**空 `Mono`**，核心侧**不打任何日志**——「没装」和「装了但失联」表现完全一样，无法从代码侧区分。请按序排查：
 
 1. `interaction-plus` 是否**已安装且已启用**（后台 → 插件列表确认，装了但停用同样取不到）；
-2. 版本是否过旧：`DecorationGrantApi` 与 `PublicIdentityQueryApi` 均自 `0.1.0` 起提供，`UserStatContributor` 扩展点同版本引入，更早的版本没有这些扩展点；
-3. 站长是否在 Halo「设置 → 扩展点」里给该扩展点**指定过实现**：若指定后 `interaction-plus` 被卸载 / 重装，配置仍指向已不存在的实现，会**静默失联**——即便重新装回也取不到，需站长到扩展点设置里重新选择（或清除该项）；
-4. 确认注入的是核心的 `run.halo.app.plugin.extensionpoint.ExtensionGetter`，且调用 `getEnabledExtension`（而非 `getExtensions`）。
+2. 站长是否在 Halo「设置 → 扩展点」里给该扩展点**指定过实现**：若指定后 `interaction-plus` 被卸载 / 重装，配置仍指向已不存在的实现，会**静默失联**——即便重新装回也取不到，需站长到扩展点设置里重新选择（或清除该项）；
+3. 确认注入的是核心的 `run.halo.app.plugin.extensionpoint.ExtensionGetter`，且调用 `getEnabledExtension`（而非 `getExtensions`）。
 
-## 版本兼容性
+## 接入要求
 
 | 项 | 要求 |
 |---|---|
-| 运行环境 | Halo `>= 2.25`（随 `interaction-plus`）；`ExtensionGetter` 对插件开放需 Halo `>= 2.18` |
-| `interaction-plus` | `>= 0.1.0`（两个 API 均自 `0.1.0` 起提供，以实际发布版本为准） |
-| 构建环境 | api 模块以 **Java 21 字节码**发布，消费方需以 JDK 21 且编译目标（`release` / toolchain）≥ 21 构建；编译基线 Halo **2.21+ 即可**（api 对外仅暴露 `org.pf4j.ExtensionPoint` 与 Reactor，依赖均为 compileOnly、不进 POM），无需升到 2.25 |
+| 运行环境 | Interaction Plus 要求 Halo `>= 2.25`；`ExtensionGetter` 对插件开放需 Halo `>= 2.18` |
+| 依赖版本 | Interaction Plus `1.0.0`；api 构件 `1.0.0` |
+| 构建环境 | `api` 模块使用 Java 21 字节码，消费方使用 JDK 21 且编译目标（`release` / toolchain）≥ 21；对外类型只依赖 `org.pf4j.ExtensionPoint` 与 Reactor，相关依赖均为 `compileOnly` |
+
+## 前端输出 hip-* 标签时：带上 scene
+
+如果你的插件在**浏览器端**渲染用户身份（评论插件是典型），直接写 `hip-*` 标签即可，但请带上 `scene` 属性声明场景：
+
+```html
+<hip-user-avatar   user-name="tim" scene="comment"></hip-user-avatar>
+<hip-user-identity user-name="tim" scene="comment"></hip-user-identity>
+```
+
+- **默认不要指定尺寸**。没人覆盖时，多大由站长模板按 `scene` 决定（内置默认：`comment` 的头像是 36px）。组件没有 `size` 属性，尺寸不走标签属性。
+- **要改你自己输出的那些**：在标签或容器上设 `--hip-avatar-size`（只影响你种下去的实例，不是全站这个 scene 词）。用法见[前台适配指南 · 调用方覆盖头像尺寸](theme-integration.md#调用方覆盖头像尺寸)。
+- **推荐词表**：`comment`（评论）/ `post`（正文）/ `moment`（瞬间）/ `sidebar`（侧栏）/ `profile`（个人页）/ `list`（列表）。插件不校验取值，但各造各的词会让站长为一堆同义词写规则。
+- 六个词在**头像**的内置模板里都有对应尺寸；身份行与用户卡的内置模板不消费 `scene`（站长可自行写规则）。哪个组件吃哪些词见[场景分档](theme-integration.md#场景分档)。
+- `scene` 是**场景类别不是位置实例**：你的插件若有两处语义不同的位置，别都填 `comment`，换个更具体的词。需要第二个维度时，宿主上的任何属性都能当 CSS 挂点（如 `data-area="..."`），不必挤在 `scene` 里。
+- 不填也能跑，走模板的默认形态。
+- 前提是页面已引入 runtime（见[前台适配指南](theme-integration.md#引入-runtime)）。你的插件若有独立路由页，需要自己引一次。
+- **另起自己的 CSS 变量或 scene 词**想让站长写进自定义模板时，**你必须自己给站长出说明**。变量写清名字、用在哪、不设时怎样；scene 写清词是什么、用在哪。本插件文档只保证 `--hip-avatar-size` 和推荐六词，不替你列那些名字。推荐词能用就别另起，免得站长为一堆同义词写规则。
 
 ## 相关文档
 
-- [主题适配指南](theme-integration.md)——hip-* runtime 组件、公开 HTTP API、Finder（浏览器 / 主题侧）。
+- [站长使用指南](site-admin.md)——后台创建装饰、授予、稀有度「允许外部发放」、权限与设置。
+- [前台适配指南](theme-integration.md)——hip-* runtime 组件、公开 HTTP API、Finder（Halo 服务端模板侧）。
+- [自定义模板](theme-integration.md#自定义模板)——站长可在后台贴 HTML/CSS 完全接管 `hip-*` 组件的渲染（标签名不变，第三方消费方零改动、无需感知）。身份数据与本文 API / HTTP / Finder **同源**，仅出口不同。

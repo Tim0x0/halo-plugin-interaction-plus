@@ -140,6 +140,15 @@ rules:
     resources: ["identity-mark-mappings"]
     verbs: ["create", "list", "update", "delete"]
 ---
+# ── 自定义组件模板：刻意不发角色模板 ────────────────────────────────
+# 模板 HTML 可含 <script>，在每个组件实例每次渲染时各执行一次，且能访问 document / window
+# （Shadow DOM 只隔离样式，不隔离 JS 权限）——写权限等价于「自定义 head 代码」，
+# 即完整的站点 JS 执行权。因此不提供任何可分配的角色模板：
+# console.api 的 custom-templates 路由只有超级管理员（super-role 的 * 通配规则）能访问，
+# 站长无法误把它分配给编辑 / 作者。
+#
+# ⚠ 新增管理侧路由时不要顺手在这里补规则——那等于把 JS 执行权对外发放。
+
 # ── 公开身份 API（默认聚合给游客与登录用户）─────────────────────────
 apiVersion: v1alpha1
 kind: Role
@@ -162,3 +171,9 @@ rules:
   - apiGroups: ["api.interaction-plus.timxs.com"]
     resources: ["identities"]
     verbs: ["create"]
+  # GET /custom-templates 无 name 段，按 Halo RequestInfoFactory 归 list。
+  # 这条是前台渲染的前置：runtime 拿不到模板就退回内置默认，而站长自己带着登录态
+  # 看一切正常——漏了它的表现是「访客看到的永远是默认样式」，没有任何报错
+  - apiGroups: ["api.interaction-plus.timxs.com"]
+    resources: ["custom-templates"]
+    verbs: ["list"]

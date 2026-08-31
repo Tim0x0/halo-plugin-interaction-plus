@@ -12,13 +12,22 @@ import run.halo.app.plugin.ReactiveSettingFetcher;
 @RequiredArgsConstructor
 public class InteractionPlusSettingService {
 
+    static final String GROUP_BASIC = "basic";
     static final String GROUP_DISPLAY = "decoration.display";
     static final String GROUP_MANAGEMENT = "decoration.management";
 
     private final ReactiveSettingFetcher settingFetcher;
 
     /**
-     * 读取展示配置（含场景密度，同一 display 组内以 formkit 分节标题组织），
+     * 读取基础配置（类型总闸 + 公开身份缓存），无配置时返回默认值。
+     */
+    public Mono<BasicSetting> getBasicSetting() {
+        return settingFetcher.fetch(GROUP_BASIC, BasicSetting.class)
+            .defaultIfEmpty(new BasicSetting());
+    }
+
+    /**
+     * 读取展示配置（三个组件场景，同一 display 组内以 formkit group 组织），
      * 无配置时返回默认值。
      */
     public Mono<DisplaySetting> getDisplaySetting() {
@@ -27,7 +36,7 @@ public class InteractionPlusSettingService {
     }
 
     /**
-     * 读取装饰管理配置（投稿 / 素材阈值 / 清理合并组），无配置时返回默认值。
+     * 读取装饰管理配置（投稿 / 清理合并组），无配置时返回默认值。
      */
     private Mono<ManagementSetting> getManagementSetting() {
         return settingFetcher.fetch(GROUP_MANAGEMENT, ManagementSetting.class)
@@ -45,10 +54,10 @@ public class InteractionPlusSettingService {
 
     /**
      * Public identity 缓存 TTL（秒），限制在 0 - 300。
-     * 静态换算：聚合链上已持有 DisplaySetting 时直接取值，避免为拿 TTL 再解析一遍配置。
+     * 静态换算：聚合链上已持有 BasicSetting 时直接取值，避免为拿 TTL 再解析一遍配置。
      */
-    public static int clampPublicIdentityCacheTtl(DisplaySetting display) {
-        return Math.max(0, Math.min(300, display.getPublicIdentityCacheTtlSeconds()));
+    public static int clampPublicIdentityCacheTtl(BasicSetting basic) {
+        return Math.max(0, Math.min(300, basic.getPublicIdentityCacheTtlSeconds()));
     }
 
     /**

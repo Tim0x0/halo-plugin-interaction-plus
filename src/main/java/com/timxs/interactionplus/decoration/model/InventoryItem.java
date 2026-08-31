@@ -17,7 +17,7 @@ public class InventoryItem {
     public static final String STATUS_EXPIRED = "expired";
     /** 已撤销。 */
     public static final String STATUS_REVOKED = "revoked";
-    /** 已停用（资产被停用 / 归档）。 */
+    /** 已下架（仍有有效授予，但资产被停用 / 归档 / 删除）。 */
     public static final String STATUS_DISABLED = "disabled";
 
     private String grantName;

@@ -122,7 +122,9 @@ public class IdentityMarkMappingService {
 
     private void applyParam(UserIdentityMarkMapping.Spec spec, IdentityMarkMappingParam param) {
         spec.setDisplayName(param.getDisplayName());
+        spec.setDisplayMode(param.getDisplayMode());
         spec.setIcon(param.getIcon());
+        spec.setImage(param.getImage());
         spec.setColor(param.getColor());
         spec.setPriority(param.getPriority() == null ? 0 : param.getPriority());
         spec.setEnabled(param.getEnabled() == null || param.getEnabled());
@@ -158,5 +160,8 @@ public class IdentityMarkMappingService {
             throw InteractionPlusException.badRequest(ErrorCodes.VALIDATION_FAILED,
                 "参数校验失败", "角色不能为空。");
         }
+        // displayMode 与 color 不在此校验：spec 上分别有 @Schema(enum) 与 @Schema(pattern)，
+        // Halo 写入时按 schema 校验并抛 400，服务层不重复。
+        // 上面两条留着是因为 schema 查不到：required 只保证键存在，空串照样通过
     }
 }

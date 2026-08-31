@@ -8,7 +8,7 @@ spec:
   type: SINGLETON
   description: "供其他插件经 ExtensionGetter.getEnabledExtension 获取 PublicIdentityQueryApi 并调用，在后端进程内查询用户公开身份与装扮数据。"
 ---
-# 登记上面扩展点的内置实现（与 EPD 成对，对齐官方 plugin-ai-foundation 规范）。
+# 登记上面扩展点的内置实现（与 EPD 成对：EPD 声明扩展点，ED 登记实现）。
 # 缺 ED 时 Halo 有兜底（扫描全部实现仍可取到），但补上后：后台「系统 → 扩展」可见可管；
 # 且系统配置一旦写入本扩展点条目就只按 ED 名单取实现，未登记会静默失联（v2.25 源码核实）。
 apiVersion: plugin.halo.run/v1alpha1

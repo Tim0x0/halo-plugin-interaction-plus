@@ -8,7 +8,7 @@ import { utils } from '@halo-dev/ui-shared'
 const route = useRoute()
 const router = useRouter()
 
-/** 子页面候选（与子路由权限一致，按菜单顺序） */
+/** 子页面候选（按菜单顺序；custom-templates 权限仅超管可得、且超管在首项即放行，故不列入） */
 const CANDIDATES = [
   { name: 'InteractionPlusAssets', permission: 'plugin:interaction-plus:decoration:manage' },
   { name: 'InteractionPlusGrants', permission: 'plugin:interaction-plus:decoration:grant' },

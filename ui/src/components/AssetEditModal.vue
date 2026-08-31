@@ -1,20 +1,25 @@
 <script lang="ts" setup>
 // 装饰资产创建 / 编辑弹窗（Console 管理与 UC 投稿共用）
 // 左右结构：左侧配置表单，右侧实时预览
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { Toast, VButton, VModal, VSpace } from '@halo-dev/components'
 import { assetApi, ucApi } from '@/api'
-import DecorationPreview from '@/components/DecorationPreview.vue'
-import type { PreviewScene } from '@/components/DecorationPreview.vue'
 import type {
+  AssetPayload,
   DecorationAsset,
   DecorationAssetParam,
   DecorationTypeValue,
   MetadataOptions,
-  NameStyle,
-  PreviewData,
+  PublicIdentity,
 } from '@/types'
 import { TYPE_OPTIONS } from '@/utils/decoration'
+import {
+  currentUserAvatar,
+  PREVIEW_SCENES,
+  sampleIdentityWith,
+  sceneComponents,
+} from '@/utils/preview-identity'
+import { loadRuntimeForPreview, type HipRuntime } from '@/utils/runtime-loader'
 
 const props = defineProps<{
   /** 编辑对象；为空表示新建 */
@@ -66,7 +71,6 @@ const formState = reactive({
   rarityName: '',
   assetUrl: '',
   assetMediaType: '',
-  titleMode: 'text' as 'text' | 'image',
   titleText: '',
   titleColor: '',
   titleBackground: '',
@@ -91,7 +95,6 @@ watch(
     formState.rarityName = asset.spec.rarityName || ''
     formState.assetUrl = asset.spec.asset?.url || ''
     formState.assetMediaType = asset.spec.asset?.mediaType || ''
-    formState.titleMode = asset.spec.payload?.titleMode === 'image' ? 'image' : 'text'
     formState.titleText = asset.spec.payload?.titleText || ''
     formState.titleColor = asset.spec.payload?.titleColor || ''
     formState.titleBackground = asset.spec.payload?.titleBackground || ''
@@ -107,8 +110,8 @@ watch(
   { immediate: true },
 )
 
-// 素材经 attachment 输入更换后 mediaType 不再可知：与原素材不同则清空，
-// 避免提交 url 与 mediaType 的脏配对（后端不重探；SVG 判定回落 .svg 后缀）
+// attachment 输入只返回素材 URL：更换 URL 时清空 mediaType，避免提交不匹配的
+// URL 与类型（后端不探测资源；SVG 判定可按 .svg 后缀处理）。
 watch(
   () => formState.assetUrl,
   (url) => {
@@ -117,17 +120,13 @@ watch(
   },
 )
 
-// 需要素材的类型：图片类三种 + 整图形态称号（文字牌称号 / 昵称样式纯配置）
-const needMaterial = computed(
-  () =>
-    (formState.type !== 'title' && formState.type !== 'name_style') ||
-    (formState.type === 'title' && formState.titleMode === 'image'),
-)
+// 给素材位的类型：图片类三种恒需素材，称号可选加图；昵称样式纯配置，不给素材位
+const needMaterial = computed(() => formState.type !== 'name_style')
 
 const materialHelp = computed(() =>
   formState.type === 'title'
-    ? '建议细长横条图：文字单行排布并占画布高 70% 以上、宽高比不超过 10:1、高 40-64px（行内按 20px、卡片按最高 32px 缩放，偏方的图会明显缩小）'
-    : '勋章建议不低于 128x128 且图案画满画布、勿留透明边距（展示位按图适配，边距会让勋章显小一圈）；头像框建议透明图不低于 256x256，图案画满画布、勿留透明边距（展示按头像约 1.24 倍叠放）；名片背景建议 1120x592（与卡片 560x296 同比例零裁切，偏方的图会居中裁上下）；单图大小建议控制在 1-4MB 内',
+    ? '可选。配了图，用户卡的称号行显示这张图；评论等行内场景不显示图，仍用称号名称。建议细长横条图（宽高比 2:1 ~ 10:1）、内容画满画布勿留透明边距；卡片按最高 48px 缩放，图内文字占画布高 1/3 即约 16px、够读'
+    : '勋章建议不低于 128x128 且图案画满画布、勿留透明边距（展示位按图适配，边距会让勋章显小一圈）；头像框建议透明图不低于 256x256，图案画满画布、勿留透明边距（展示按头像约 1.24 倍叠放）；名片背景建议 1120x596（与卡片 560x298 同比例零裁切，偏方的图会居中裁上下）；单图大小建议控制在 1-4MB 内',
 )
 
 const categoryOptions = computed(() => [
@@ -160,49 +159,94 @@ const accepts = computed(() => {
   return ['image/png', 'image/webp', 'image/svg+xml', 'image/gif']
 })
 
-// 实时预览数据：跟随表单值渲染
-const previewData = computed<PreviewData>(() => {
+// 实时预览数据：干净底座 + 正在编辑的这一件（跟随表单值）。
+// 底座刻意不用站长自己的真实装扮 —— 素材要判断的是自身观感，旁边摆着一身别的装扮
+// 会干扰判断，而且每个站长账号装扮不同，同一个素材会看出不同结论
+const previewIdentity = computed<PublicIdentity>(() => {
   const url = needMaterial.value && formState.assetUrl ? formState.assetUrl : undefined
-  switch (formState.type) {
-    case 'badge':
-      return { primaryBadgeUrl: url, badgeShowcaseUrls: url ? [url] : [] }
-    case 'avatar_frame':
-      return { avatarFrameUrl: url }
-    case 'card_background':
-      return { cardBackgroundUrl: url }
-    case 'title':
-      return {
-        titleMode: formState.titleMode,
-        titleImageUrl:
-          formState.titleMode === 'image' && formState.assetUrl ? formState.assetUrl : undefined,
-        titleText: formState.titleText || '称号预览',
-        titleColor: formState.titleColor || undefined,
-        titleBackground: formState.titleBackground || undefined,
-        titleBackgroundSecondary:
-          formState.titleBackground && formState.titleBackground2
-            ? formState.titleBackground2
-            : undefined,
-      }
-    case 'name_style': {
-      const colors =
-        formState.nameStyleMode === 'solid'
-          ? [formState.color1]
-          : [formState.color1, formState.color2, formState.color3].filter(Boolean)
-      const nameStyle: NameStyle = { mode: formState.nameStyleMode, colors }
-      // 昵称恒用预览组件的「示例用户」，不跟随装饰名称字段（装饰名不是昵称样本）
-      return { nameStyle }
-    }
-    default:
-      return {}
+  const colors =
+    formState.nameStyleMode === 'solid'
+      ? [formState.color1]
+      : [formState.color1, formState.color2, formState.color3].filter(Boolean)
+  // 各类型的字段一并备好，最终只有当前类型对应的槽位会被读到
+  const payload: AssetPayload = {
+    // 未填时给占位文案，否则称号预览是个空牌子
+    titleText: formState.titleText || '称号预览',
+    titleColor: formState.titleColor || undefined,
+    titleBackground: formState.titleBackground || undefined,
+    titleBackgroundSecondary:
+      formState.titleBackground && formState.titleBackground2
+        ? formState.titleBackground2
+        : undefined,
+    nameStyle: { mode: formState.nameStyleMode, colors },
+  }
+  // 昵称恒用底座的「示例用户」，不跟随装饰名称字段（装饰名不是昵称样本）
+  return sampleIdentityWith({ type: formState.type, url, payload }, currentAvatar.value)
+})
+
+// ── 预览渲染（与前台同一个模板引擎） ────────────────────
+
+const previewRef = ref<HTMLElement | null>(null)
+const runtime = shallowRef<HipRuntime | null>(null)
+const previewError = ref('')
+const currentAvatar = ref<string>()
+
+/**
+ * 预览场景，默认停在用户卡（它是唯一能看全所有装饰类型的落点）。
+ *
+ * <p>不按类型自动切档：行内档本身带头像、用户卡上也看得见头像框，两档都不会漏东西。
+ */
+const previewScene = ref('card')
+const sceneTabs = PREVIEW_SCENES
+
+onMounted(async () => {
+  try {
+    // 头像取真实值：头像框要套在真实头像上，而头像是身份不是装扮，不构成干扰
+    const [loaded, avatar] = await Promise.all([loadRuntimeForPreview(), currentUserAvatar()])
+    runtime.value = loaded
+    currentAvatar.value = avatar
+  } catch (e) {
+    previewError.value = e instanceof Error ? e.message : String(e)
   }
 })
 
-// 预览场景切换（身份行 / 卡片），默认停在卡片
-const previewScene = ref<PreviewScene>('user_card')
-const sceneTabs: Array<{ id: PreviewScene; label: string }> = [
-  { id: 'identity_line', label: '身份行' },
-  { id: 'user_card', label: '卡片' },
-]
+// 颜色选择器是拖动输入，而一次预览是「重建 shadow + 重跑整段模板脚本」的全量重渲染，
+// 跟不上每一帧。50ms 防抖看不出延迟，却能把渲染次数压下一个量级
+let renderTimer: ReturnType<typeof setTimeout> | undefined
+
+watch([previewIdentity, previewScene, runtime], () => {
+  clearTimeout(renderTimer)
+  renderTimer = setTimeout(renderPreview, 50)
+})
+
+function renderPreview(): void {
+  const container = previewRef.value
+  if (!container || !runtime.value) {
+    return
+  }
+  runtime.value
+    .renderPreview(container, {
+      component: sceneComponents(previewScene.value),
+      data: previewIdentity.value,
+      // fit 的基准是内容实际占地，装得下就 1:1 —— 行内档比右栏小，实际不会被缩；
+      // 只有 560 的用户卡真的超宽才等比缩。预览看外观不验交互，卡片展开后锁死
+      fit: true,
+      locked: true,
+    })
+    .then(() => {
+      previewError.value = ''
+    })
+    .catch((e) => {
+      previewError.value = e instanceof Error ? e.message : String(e)
+    })
+}
+
+onBeforeUnmount(() => {
+  clearTimeout(renderTimer)
+  if (previewRef.value) {
+    runtime.value?.disposePreview(previewRef.value)
+  }
+})
 
 const saving = ref(false)
 
@@ -216,7 +260,7 @@ function buildParam(): DecorationAssetParam {
     tagNames: formState.tagNames.length ? formState.tagNames : undefined,
     rarityName: formState.rarityName || undefined,
   }
-  // 仅需要素材的类型才提交素材，避免切换类型后残留素材被一并入库（F9）
+  // 仅需要素材的类型才提交素材，避免切换类型后残留素材被一并入库
   if (needMaterial.value && formState.assetUrl) {
     param.asset = {
       url: formState.assetUrl,
@@ -224,16 +268,14 @@ function buildParam(): DecorationAssetParam {
     }
   }
   if (formState.type === 'title') {
-    const isImage = formState.titleMode === 'image'
     param.payload = {
-      titleMode: formState.titleMode,
       titleText: formState.titleText.trim(),
-      // 三色仅文字牌形态有意义，整图形态不入库
-      titleColor: !isImage ? formState.titleColor || undefined : undefined,
-      titleBackground: !isImage ? formState.titleBackground || undefined : undefined,
+      // 三色恒入库：行内文字牌用它，卡片的图挂了回落文字牌也用它
+      titleColor: formState.titleColor || undefined,
+      titleBackground: formState.titleBackground || undefined,
       // 第二色仅在主背景色存在时有意义
       titleBackgroundSecondary:
-        !isImage && formState.titleBackground && formState.titleBackground2
+        formState.titleBackground && formState.titleBackground2
           ? formState.titleBackground2
           : undefined,
     }
@@ -290,7 +332,7 @@ async function handleSubmit() {
     mount-to-body
     @close="emit('close')"
   >
-    <!-- B2：左右两栏顺排配置（不分通用/特定），预览置于右栏末尾 -->
+    <!-- 左右两栏顺排配置（不分通用/特定），预览置于右栏末尾 -->
     <FormKit ref="formRef" type="form" :actions="false" @submit="handleSubmit">
       <div class="hip-edit__cols">
         <!-- 左栏：依次排列的配置 -->
@@ -344,50 +386,48 @@ async function handleSubmit() {
 
         <!-- 右栏：剩余配置（随类型变化）+ 末尾预览 -->
         <div class="hip-edit__col">
-          <!-- 素材（勋章 / 头像框 / 名片背景 / 整图称号） -->
+          <!-- 称号扩展：名称必填、三色恒有效，图片是可选增强，故排在素材位之前 -->
+          <template v-if="formState.type === 'title'">
+            <FormKit
+              v-model="formState.titleText"
+              type="text"
+              label="称号名称"
+              validation="required"
+              help="评论等行内场景展示这个文字；配了称号图片时，它同时作为图片的替代文本与加载失败兜底"
+            />
+            <FormKit
+              v-model="formState.titleColor"
+              type="color"
+              format="hex8"
+              label="文字颜色"
+              help="不选则继承正文颜色"
+            />
+            <FormKit
+              v-model="formState.titleBackground"
+              type="color"
+              format="hex8"
+              label="背景颜色"
+              help="不选则无背景；可拉透明度"
+            />
+            <FormKit
+              v-if="formState.titleBackground"
+              v-model="formState.titleBackground2"
+              type="color"
+              format="hex8"
+              label="背景颜色 2（可选）"
+              help="填写后与背景颜色形成渐变"
+            />
+          </template>
+
+          <!-- 素材：勋章 / 头像框 / 名片背景恒需，称号可选加图 -->
           <FormKit
             v-if="needMaterial"
             v-model="formState.assetUrl"
             type="attachment"
-            label="素材"
+            :label="formState.type === 'title' ? '称号图片' : '素材'"
             :accepts="accepts"
             :help="materialHelp"
           />
-
-          <!-- 称号扩展 -->
-          <template v-if="formState.type === 'title'">
-            <FormKit
-              v-model="formState.titleMode"
-              type="radio"
-              label="称号形态"
-              :options="[
-                { label: '文字牌', value: 'text' },
-                { label: '整图', value: 'image' },
-              ]"
-            />
-            <FormKit
-              v-model="formState.titleText"
-              type="text"
-              label="称号文本"
-              validation="required"
-              :help="
-                formState.titleMode === 'image'
-                  ? '整图形态下作为图片替代文本，图片加载失败时回落显示'
-                  : undefined
-              "
-            />
-            <template v-if="formState.titleMode === 'text'">
-              <FormKit v-model="formState.titleColor" type="color" label="文字颜色" />
-              <FormKit v-model="formState.titleBackground" type="color" label="背景颜色" />
-              <FormKit
-                v-if="formState.titleBackground"
-                v-model="formState.titleBackground2"
-                type="color"
-                label="背景颜色 2（可选）"
-                help="填写后与背景颜色形成渐变"
-              />
-            </template>
-          </template>
 
           <!-- 昵称样式扩展 -->
           <template v-if="formState.type === 'name_style'">
@@ -400,18 +440,23 @@ async function handleSubmit() {
                 { label: '渐变', value: 'gradient' },
               ]"
             />
-            <FormKit v-model="formState.color1" type="color" label="颜色 1" />
+            <FormKit v-model="formState.color1" type="color" format="hex8" label="颜色 1" />
             <template v-if="formState.nameStyleMode === 'gradient'">
-              <FormKit v-model="formState.color2" type="color" label="颜色 2" />
-              <FormKit v-model="formState.color3" type="color" label="颜色 3（可选）" />
+              <FormKit v-model="formState.color2" type="color" format="hex8" label="颜色 2" />
+              <FormKit
+                v-model="formState.color3"
+                type="color"
+                format="hex8"
+                label="颜色 3（可选）"
+              />
             </template>
           </template>
 
-          <!-- 预览：右栏末尾，3 场景 Tab 切换 -->
+          <!-- 预览：右栏末尾，两档落点 Tab 切换（行内组合 / 用户卡） -->
           <div class="hip-edit__preview">
             <div class="hip-edit__preview-head">
               <span class="hip-edit__preview-label">实时预览</span>
-              <div class="hip-edit__scenes" role="group" aria-label="预览场景切换">
+              <div class="hip-edit__scenes" role="group" aria-label="预览组件切换">
                 <button
                   v-for="scene in sceneTabs"
                   :key="scene.id"
@@ -424,7 +469,11 @@ async function handleSubmit() {
                 </button>
               </div>
             </div>
-            <DecorationPreview :data="previewData" :scenes="[previewScene]" />
+            <p v-if="previewError" class="hip-edit__preview-error">
+              预览不可用：{{ previewError }}
+            </p>
+            <!-- 内部完全交给 runtime（它在里面建 iframe），Vue 不碰这层的子节点 -->
+            <div v-else ref="previewRef"></div>
           </div>
         </div>
       </div>
@@ -443,7 +492,7 @@ async function handleSubmit() {
 </template>
 
 <style scoped>
-/* B2：左右两栏顺排，配置 + 预览顺次填充 */
+/* 左右两栏顺排，配置 + 预览顺次填充 */
 .hip-edit__cols {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -469,6 +518,10 @@ async function handleSubmit() {
   flex-wrap: wrap;
 }
 .hip-edit__preview-label {
+  font-size: var(--hip-font-caption);
+  color: var(--hip-text-muted);
+}
+.hip-edit__preview-error {
   font-size: var(--hip-font-caption);
   color: var(--hip-text-muted);
 }

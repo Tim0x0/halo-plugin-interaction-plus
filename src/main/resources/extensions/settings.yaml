@@ -4,13 +4,17 @@ metadata:
   name: interaction-plus-settings
 spec:
   forms:
-    - group: decoration.display
-      label: 装饰展示
+    # 基础设置：站点级、与具体组件无关的项（类型总闸 + 缓存）。
+    # 类型总闸不进 PublicIdentity.display 快照 —— 关闭时后端直接不吐该类型数据，
+    # 因此它只有本文件与 BasicSetting.java 两处副本，不在「五处同步清单」里。
+    - group: basic
+      label: 基础设置
       formSchema:
-        # 类型开关：官方 $formkit:group 分组（数据嵌套在 types 对象下）
+        # 类型总闸：官方 $formkit:group（数据嵌套在 types 对象下）
         - $formkit: group
           name: types
           label: 类型开关
+          help: 关闭后所有场景都不展示该类型，用户佩戴状态保留
           children:
             - $formkit: switch
               name: enabledBadge
@@ -36,44 +40,6 @@ spec:
               name: enabledIdentityMark
               label: 启用身份标识展示
               value: true
-        # 场景密度：官方 $formkit:group 分组（数据嵌套在 density 对象下）
-        - $formkit: group
-          name: density
-          label: 场景密度
-          children:
-            - $formkit: switch
-              name: identityLineShowPrimaryBadge
-              label: 身份行显示主勋章
-              value: true
-            - $formkit: number
-              name: identityLineIdentityLimit
-              label: 身份行身份标识数量
-              help: 取值范围 1 - 3（身份行随昵称展示，主流只显 1-2 个）
-              value: 1
-              min: 1
-              max: 3
-              validation: "required|min:1|max:3"
-            - $formkit: number
-              name: userCardShowcaseBadgeLimit
-              label: 卡片展示勋章数量
-              help: 取值范围 0 - 8（展柜行按收藏格展示，超出的勋章收进「+N」计数格）
-              value: 5
-              min: 0
-              max: 8
-              validation: "required|min:0|max:8"
-            - $formkit: number
-              name: userCardIdentityLimit
-              label: 卡片身份标识数量
-              help: 取值范围 1 - 5
-              value: 3
-              min: 1
-              max: 5
-              validation: "required|min:1|max:5"
-        - $formkit: text
-          name: userCardLinkTemplate
-          label: 用户卡跳转链接
-          help: 用户卡头像 / 名字点击后跳转的链接模板，{name} 会替换为用户名；留空表示不跳转
-          value: "/authors/{name}"
         - $formkit: number
           name: publicIdentityCacheTtlSeconds
           label: 公开身份缓存时间（秒）
@@ -82,6 +48,124 @@ spec:
           min: 0
           max: 300
           validation: "required|min:0|max:300"
+    - group: decoration.display
+      label: 装饰展示
+      # ⚠ 五处同步清单：本文件是「装饰展示」默认值的真值源，另有四处兜底副本
+      # （DisplaySetting.java / PublicIdentityVo.java / runtime/src/hip-data.ts /
+      #  ui/src/utils/preview-identity.ts）。增删设置项时五处全改，完整说明见
+      # DisplaySetting.java 的类注释。漏改不报错，只是该层默认行为与其余层不一致。
+      formSchema:
+        # 场景 = 三个前台组件，不是 CSS scene 词
+        - $formkit: group
+          name: identityLine
+          label: 身份行
+          help: 只作用于 hip-user-identity（评论 / 作者昵称行）
+          children:
+            - $formkit: switch
+              name: showTitle
+              label: 显示称号
+              value: true
+            - $formkit: switch
+              name: showPrimaryBadge
+              label: 显示主勋章
+              value: true
+            - $formkit: switch
+              name: showNameStyle
+              label: 显示昵称样式
+              value: true
+            - $formkit: switch
+              name: showIdentityMarks
+              id: identityLineShowIdentityMarks
+              label: 显示身份标识
+              value: true
+            - $formkit: number
+              name: identityLimit
+              label: 身份标识数量
+              help: 取值范围 1 - 3（身份行随昵称展示，主流只显 1-2 个）
+              if: "$get(identityLineShowIdentityMarks).value === true"
+              value: 1
+              min: 1
+              max: 3
+              validation: "required|min:1|max:3"
+        - $formkit: group
+          name: avatar
+          label: 头像
+          help: 只作用于 hip-user-avatar
+          children:
+            - $formkit: switch
+              name: showFrame
+              label: 显示头像框
+              value: true
+        - $formkit: group
+          name: userCard
+          label: 用户卡
+          help: 只作用于 hip-user-card
+          children:
+            - $formkit: switch
+              name: showTitle
+              label: 显示称号
+              value: true
+            - $formkit: switch
+              name: showPrimaryBadge
+              label: 显示主勋章
+              value: true
+            - $formkit: switch
+              name: showShowcase
+              id: userCardShowShowcase
+              label: 显示展柜
+              value: true
+            - $formkit: switch
+              name: showNameStyle
+              label: 显示昵称样式
+              value: true
+            - $formkit: switch
+              name: showIdentityMarks
+              id: userCardShowIdentityMarks
+              label: 显示身份标识
+              value: true
+            - $formkit: switch
+              name: showAvatarFrame
+              label: 显示头像框
+              value: true
+            - $formkit: switch
+              name: showCardBackground
+              label: 显示名片背景
+              value: true
+            - $formkit: number
+              name: showcaseBadgeLimit
+              label: 展柜勋章数量
+              help: 取值范围 0 - 8（展柜行按收藏格展示，超出的勋章收进「+N」计数格）
+              if: "$get(userCardShowShowcase).value === true"
+              value: 5
+              min: 0
+              max: 8
+              validation: "required|min:0|max:8"
+            - $formkit: number
+              name: identityLimit
+              label: 身份标识数量
+              help: 取值范围 1 - 5
+              if: "$get(userCardShowIdentityMarks).value === true"
+              value: 3
+              min: 1
+              max: 5
+              validation: "required|min:1|max:5"
+        - $formkit: select
+          name: avatarFallbackStyle
+          label: 无头像占位
+          help: 用户未设置头像、或头像加载失败时，内置组件画出的占位样子。不改公开数据里的 avatar 字段；自定义模板若自己画占位，不受此项影响。
+          value: "halo"
+          options:
+            - label: Halo 风格
+              value: "halo"
+              description: 灰底首字母，与 Halo 后台默认头像同类
+            - label: Hash 风格
+              value: "hash"
+              description: 按显示名计算背景色，白字首字母（Flarum 式算法）
+        - $formkit: text
+          name: userCardLinkTemplate
+          label: 用户卡跳转链接
+          help: 用户卡头像 / 名字点击后跳转的链接模板，{name} 会替换为用户名；留空表示不跳转
+          value: "/authors/{name}"
     - group: decoration.management
       label: 装饰管理
       formSchema:
@@ -93,7 +177,7 @@ spec:
             - $formkit: switch
               name: enabled
               label: 启用用户投稿入口
-              help: 实际可见性仍由“提交装饰草稿”权限控制
+              help: 实际可见性仍由「提交装饰草稿」权限控制
               value: true
         # 素材建议（尺寸/大小）为表单内写死的提示文案，无需配置化——有真实自定义诉求再加
         # 数据清理：官方 $formkit:group 分组（数据嵌套在 cleanup 对象下）

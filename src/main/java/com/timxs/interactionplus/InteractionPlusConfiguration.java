@@ -14,7 +14,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * <p>当前使用方：{@link com.timxs.interactionplus.decoration.service.GrantRetentionService} 的授予记录保留清理。
  *
  * @author Tim0x0
- * @since 0.1.0
+ * @since 1.0.0
  */
 @Configuration
 @EnableScheduling

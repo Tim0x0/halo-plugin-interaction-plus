@@ -1,5 +1,5 @@
 # 用户统计贡献扩展点：外部插件把自己领域的用户统计项（采纳数 / 获赏数等）
-# 贡献进 interaction-plus 的用户悬浮卡数据行与公开身份数据。
+# 贡献进 interaction-plus 的用户卡数据行与公开身份数据。
 # MULTI_INSTANCE：多个插件可同时贡献，各项按来源插件命名空间隔离。
 # 本插件不注册内置实现（文章 / 评论 / 装扮计数为内置聚合，不走扩展点）。
 apiVersion: plugin.halo.run/v1alpha1
@@ -10,4 +10,4 @@ spec:
   className: com.timxs.interactionplus.api.UserStatContributor
   displayName: "用户统计贡献"
   type: MULTI_INSTANCE
-  description: "供其他插件实现 UserStatContributor 并声明 ExtensionDefinition，把自己领域内的用户统计项贡献到用户悬浮卡与公开身份数据中；来源插件标识由系统按 ExtensionDefinition 归属自动标注。"
+  description: "供其他插件实现 UserStatContributor 并声明 ExtensionDefinition，把自己领域内的用户统计项贡献到用户卡与公开身份数据中；来源插件标识由系统按 ExtensionDefinition 归属自动标注。"

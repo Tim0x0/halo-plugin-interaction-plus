@@ -1,12 +1,9 @@
-# JitPack 构建环境配置：把 api 模块发布为外部插件可 compileOnly 依赖的构件。
+# JitPack 构建环境配置：构建 api 模块的 compileOnly 依赖构件。
 # 文档：https://docs.jitpack.io/building/
 # 本项目为 Java 21，须显式指定，否则 JitPack 默认 JDK 无法编译。
 jdk:
   - openjdk21
-# 显式触发 api 模块的本地发布：JitPack 在其构建机上跑 publishToMavenLocal，
-# 把构件捕获到它机器的 ~/.m2，再以 jitpack.io 作为 Maven 仓库对外服务。
-# -Pversion 用 JitPack 注入的 VERSION 环境变量（即 git tag，剥掉 v 前缀）覆盖
-# gradle.properties 的版本号，使 ~/.m2 构件版本与 tag 坐标直接对齐，
-# 不再依赖 JitPack 的自动 re-version 兜底。
+# 在构建机执行 publishToMavenLocal，供 JitPack 收集 Maven 构件。
+# -Pversion 使用 JitPack 注入的 VERSION，并去掉可选的 v 前缀。
 install:
   - ./gradlew :api:build :api:publishToMavenLocal -Pversion=${VERSION#v} --no-daemon

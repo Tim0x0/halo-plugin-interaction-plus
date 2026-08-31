@@ -7,6 +7,7 @@ import AssetsPage from './views/console/AssetsPage.vue'
 import GrantsPage from './views/console/GrantsPage.vue'
 import MetadataPage from './views/console/MetadataPage.vue'
 import IdentityMarksPage from './views/console/IdentityMarksPage.vue'
+import CustomTemplatesPage from './views/console/CustomTemplatesPage.vue'
 import UcEntryPage from './views/uc/UcEntryPage.vue'
 import MyDecorationPage from './views/uc/MyDecorationPage.vue'
 import SubmissionsPage from './views/uc/SubmissionsPage.vue'
@@ -30,6 +31,7 @@ export default definePlugin({
             'plugin:interaction-plus:decoration:manage',
             'plugin:interaction-plus:decoration:grant',
             'plugin:interaction-plus:system:manage',
+            'plugin:interaction-plus:template:manage',
           ],
           menu: {
             name: '装饰',
@@ -81,6 +83,22 @@ export default definePlugin({
               searchable: true,
               permissions: ['plugin:interaction-plus:system:manage'],
               menu: { name: '身份标识', priority: 3 },
+            },
+          },
+          {
+            path: 'custom-templates',
+            name: 'InteractionPlusCustomTemplates',
+            component: CustomTemplatesPage,
+            meta: {
+              title: '自定义组件',
+              searchable: true,
+              // 该权限刻意不由任何角色模板授予：模板 HTML 可含 <script>，在每个组件
+              // 实例每次渲染时各执行一次且能访问 document / window（Shadow DOM 不隔离
+              // JS 权限），写权限等价于站点 JS 执行权。超管的 uiPermissions 含 "*"，
+              // PermissionUtils.has 直接放行；其他人拿不到这个串，菜单与路由都不可见。
+              // 与后端「不发角色模板」是同一决策的两侧，改一侧必须改另一侧。
+              permissions: ['plugin:interaction-plus:template:manage'],
+              menu: { name: '自定义组件', priority: 4 },
             },
           },
         ],

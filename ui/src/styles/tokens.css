@@ -25,6 +25,8 @@
   /* 阴影（hover 柔和阴影） */
   --hip-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.08);
   --hip-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+  /* 粘性列与滚动内容的交界阴影：负扩散使其只在被遮挡侧显形 */
+  --hip-shadow-sticky: 10px -12px rgba(15, 23, 42, 0.45);
 
   /* 字号 */
   --hip-font-body: 13px;
@@ -53,20 +55,26 @@
 }
 
 /*
- * 共享表格体系：原生 table（table-layout: auto），列宽按内容自然分配——
- * 信息列加 .hip-td-fit（width:1% + nowrap）收缩到内容宽，主列自动吃掉剩余空间，
- * 所有行天然列对齐，几列的小表不会被强行拉伸得很空。
+ * 共享表格体系：基础排版统一收在这里；业务页按字段语义用 colgroup 分配列宽。
  */
+/* separate 边框模型：collapsed 边框归 table 所有、不随 sticky 单元格移动，
+   Chromium 会丢粘性列的分隔线；行分隔线均为单侧声明，separate 下无双线。
+   border-spacing 须显式归零——separate 模式默认 2px。 */
 .hip-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: auto;
 }
-/* 少列的配置型列表（元数据 / 身份标识 / 投稿）：内容宽度，不强制撑满容器，
-   避免几列被拉伸得很空；列宽随内容自适应，名称长短不互相挤压 */
-.hip-table--auto {
-  width: auto;
-  min-width: min(560px, 100%);
+/* 表格外层滚动容器：窄屏保留列的信息密度，以触摸 / 触控板 / 键盘横向浏览。
+   role=region + tabindex=0 由业务页提供，键盘用户才能聚焦滚动。 */
+.hip-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+.hip-table-scroll:focus-visible {
+  outline: 2px solid var(--hip-primary);
+  outline-offset: -2px;
 }
 .hip-table th {
   text-align: left;
@@ -93,10 +101,37 @@
 .hip-table tbody tr:hover {
   background: var(--hip-bg-subtle);
 }
-/* 收缩列：宽度跟随内容（时间 / 状态 / 标签 / 操作等信息列） */
-.hip-td-fit {
-  width: 1%;
+/* 固定列宽表格中的长文本（名称 / 来源 / 时间等）：宽度由 colgroup 决定，
+   min/max-width 放 td 上效果未定义（CSS 2.1 §10.4），由内层块承接限宽 + ellipsis。 */
+.hip-table__cell-ellipsis {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* 横向滚动时保留拖拽 / 操作入口；表头与行 hover 的底色保持 Halo 列表语义。
+   遮挡分界阴影不在此常驻：由下方滚动驱动的动画按需点亮。 */
+.hip-table__sticky-start,
+.hip-table__sticky-end {
+  position: sticky;
+  z-index: 1;
+  background: var(--hip-bg-card);
+}
+.hip-table__sticky-start {
+  left: 0;
+}
+.hip-table__sticky-end {
+  right: 0;
+}
+.hip-table thead .hip-table__sticky-start,
+.hip-table thead .hip-table__sticky-end {
+  z-index: 2;
+  background: var(--hip-bg-subtle);
+}
+.hip-table tbody tr:hover > .hip-table__sticky-start,
+.hip-table tbody tr:hover > .hip-table__sticky-end {
+  background: var(--hip-bg-subtle);
 }
 /* 主列（名称 / 描述）：吃掉剩余空间，内容溢出截断 */
 .hip-table__main {
@@ -127,4 +162,112 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 列表标签列：chip 单行收缩，超量折叠为「+N」计数牌（保留个数由 utils/decoration 的
+   shownTags / restTagCount 决定）。不做多行裁切——被裁掉的行没有视觉提示。 */
+.hip-table__tags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.hip-tag {
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 18px;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid var(--hip-border);
+  color: var(--hip-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 计数牌不参与收缩：先被压没的正是「还有多少」这个信息 */
+.hip-tag--more {
+  flex: none;
+  color: var(--hip-text-faint);
+}
+
+/* 粘性列的分界阴影由滚动进度驱动：贴着滚动起点的那侧没遮住内容、阴影熄灭，
+   离开起点后点亮；滚到终点的操作列回到自然位置、阴影熄灭。 */
+@keyframes hip-sticky-start-shadow {
+  0% {
+    box-shadow: none;
+  }
+  2%,
+  100% {
+    box-shadow: 8px 0 var(--hip-shadow-sticky);
+  }
+}
+@keyframes hip-sticky-end-shadow {
+  0%,
+  98% {
+    box-shadow: -8px 0 var(--hip-shadow-sticky);
+  }
+  100% {
+    box-shadow: none;
+  }
+}
+
+/* 逐表声明启用条件：容器窄于该表 min-width（即真的可滚动）才挂动画，
+   断点值与各页 .hip-*-table 的 min-width 保持 -1px 同步。
+   duration 只作占位，进度实际由滚动位置驱动。
+   不支持 scroll timeline 的浏览器不挂动画——无阴影优于常驻阴影。 */
+@supports (animation-timeline: scroll()) {
+  .hip-table-scroll {
+    container-type: inline-size;
+  }
+  @container (max-width: 1159px) {
+    .hip-assets-table .hip-table__sticky-end {
+      animation: hip-sticky-end-shadow 1s linear both;
+      animation-timeline: scroll(nearest inline);
+    }
+  }
+  @container (max-width: 1139px) {
+    .hip-grants-table .hip-table__sticky-end {
+      animation: hip-sticky-end-shadow 1s linear both;
+      animation-timeline: scroll(nearest inline);
+    }
+  }
+  @container (max-width: 1023px) {
+    .hip-submissions-table .hip-table__sticky-end {
+      animation: hip-sticky-end-shadow 1s linear both;
+      animation-timeline: scroll(nearest inline);
+    }
+  }
+  @container (max-width: 759px) {
+    .hip-identity-table .hip-table__sticky-start {
+      animation: hip-sticky-start-shadow 1s linear both;
+      animation-timeline: scroll(nearest inline);
+    }
+    .hip-identity-table .hip-table__sticky-end {
+      animation: hip-sticky-end-shadow 1s linear both;
+      animation-timeline: scroll(nearest inline);
+    }
+  }
+  @container (max-width: 819px) {
+    .hip-metadata-table--colored .hip-table__sticky-start {
+      animation: hip-sticky-start-shadow 1s linear both;
+      animation-timeline: scroll(nearest inline);
+    }
+    .hip-metadata-table--colored .hip-table__sticky-end {
+      animation: hip-sticky-end-shadow 1s linear both;
+      animation-timeline: scroll(nearest inline);
+    }
+  }
+  @container (max-width: 599px) {
+    .hip-metadata-table .hip-table__sticky-start {
+      animation: hip-sticky-start-shadow 1s linear both;
+      animation-timeline: scroll(nearest inline);
+    }
+    .hip-metadata-table .hip-table__sticky-end {
+      animation: hip-sticky-end-shadow 1s linear both;
+      animation-timeline: scroll(nearest inline);
+    }
+  }
 }

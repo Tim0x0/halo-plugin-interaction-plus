@@ -17,8 +17,10 @@ import com.timxs.interactionplus.decoration.extension.UserDecorationProfile;
 import com.timxs.interactionplus.decoration.extension.UserDecorationRarity;
 import com.timxs.interactionplus.decoration.service.DecorationMetadataService;
 import com.timxs.interactionplus.identity.extension.UserIdentityMarkMapping;
+import com.timxs.interactionplus.identity.constants.IdentityMarkMode;
 import com.timxs.interactionplus.identity.model.PublicIdentityBatch;
 import com.timxs.interactionplus.identity.model.PublicIdentityVo;
+import com.timxs.interactionplus.core.setting.BasicSetting;
 import com.timxs.interactionplus.core.setting.DisplaySetting;
 import com.timxs.interactionplus.core.setting.InteractionPlusSettingService;
 import com.timxs.interactionplus.core.support.NameGenerator;
@@ -64,7 +66,7 @@ import run.halo.app.plugin.extensionpoint.ExtensionGetter;
 @RequiredArgsConstructor
 public class PublicIdentityService {
 
-    /** 身份标识返回数量硬上限（配置项各场景允许范围为 1-10）。 */
+    /** 身份标识返回数量硬上限（配置项各场景实际范围为身份行 1-3、用户卡 1-5，此处取更宽兜底）。 */
     private static final int IDENTITY_MARK_MAX = 10;
 
     /** 装饰墙并发 fetch 资产的并发度上限（有界并发，避免压垮 DB 连接池）。 */
@@ -110,22 +112,29 @@ public class PublicIdentityService {
     private final ExtensionGetter extensionGetter;
 
     /**
-     * 一次聚合的共享上下文：display 配置 + 惰性加载且至多加载一次的全局字典
-     * （稀有度表、启用的身份标识映射表、统计贡献实现的来源插件表）。批量查询 50 用户时
-     * 全局表各读一次而非每用户一次；单用户路径同样按需加载（身份标识关闭时映射表不加载、
-     * 无佩戴时稀有度表不加载、无统计贡献实现时来源表不加载）。
+     * 一次聚合的共享上下文：basic（类型总闸 + 缓存 TTL）与 display（组件展示策略）两份配置
+     * + 惰性加载且至多加载一次的全局字典（稀有度表、启用的身份标识映射表、统计贡献实现的
+     * 来源插件表）。批量查询 50 用户时全局表各读一次而非每用户一次；单用户路径同样按需加载
+     * （身份标识关闭时映射表不加载、无佩戴时稀有度表不加载、无统计贡献实现时来源表不加载）。
      */
-    private record AggregationContext(DisplaySetting display,
+    private record AggregationContext(BasicSetting basic,
+        DisplaySetting display,
         Mono<Map<String, UserDecorationRarity>> rarityMap,
         Mono<List<UserIdentityMarkMapping>> enabledMappings,
         Mono<Map<String, String>> contributorSources) {
     }
 
-    private AggregationContext newContext(DisplaySetting display) {
-        return new AggregationContext(display,
+    private AggregationContext newContext(BasicSetting basic, DisplaySetting display) {
+        return new AggregationContext(basic, display,
             metadataService.loadRarityMap().cache(),
             loadEnabledMappings().cache(),
             loadContributorSources().cache());
+    }
+
+    /** 两份设置一次读齐（都是 ConfigMap 内的不同组，无先后依赖）。 */
+    private Mono<AggregationContext> newContext() {
+        return Mono.zip(settingService.getBasicSetting(), settingService.getDisplaySetting())
+            .map(tuple -> newContext(tuple.getT1(), tuple.getT2()));
     }
 
     /** 全部启用的身份标识映射（priority desc）。 */
@@ -150,8 +159,7 @@ public class PublicIdentityService {
         if (cached != null) {
             return Mono.just(cached);
         }
-        return settingService.getDisplaySetting()
-            .flatMap(display -> aggregateAndCache(newContext(display), userName));
+        return newContext().flatMap(ctx -> aggregateAndCache(ctx, userName));
     }
 
     /** 缓存命中直接返回，否则聚合并按配置 TTL 回填缓存（批量查询多个用户共享同一 ctx）。 */
@@ -160,7 +168,7 @@ public class PublicIdentityService {
         if (cached != null) {
             return Mono.just(cached);
         }
-        int ttl = InteractionPlusSettingService.clampPublicIdentityCacheTtl(ctx.display());
+        int ttl = InteractionPlusSettingService.clampPublicIdentityCacheTtl(ctx.basic());
         return client.fetch(User.class, userName)
             .filter(user -> !Boolean.TRUE.equals(user.getSpec().getDisabled()))
             .flatMap(user -> aggregate(user, ctx)
@@ -193,30 +201,27 @@ public class PublicIdentityService {
                 "批量请求超过上限",
                 "单次最多查询 " + InteractionPlusConst.PUBLIC_IDENTITY_BATCH_LIMIT + " 个用户。");
         }
-        // 全局字典（display / 稀有度表 / 标识映射表）批级共享、各至多加载一次（此前逐用户重复加载）；
+        // 全局字典（basic / display / 稀有度表 / 标识映射表）在批次内共享，各至多加载一次；
         // 有界并发聚合：并发查询多个用户但限制并发度（避免压垮连接池），保序；
         // 收集完成后单线程分类到 items/skipped，无共享可变状态。
-        return settingService.getDisplaySetting().flatMap(display -> {
-            var ctx = newContext(display);
-            return Flux.fromIterable(distinct)
-                .flatMapSequential(userName -> aggregateAndCache(ctx, userName)
-                        .map(Optional::of)
-                        .defaultIfEmpty(Optional.empty())
-                        // 单个用户失败不影响整批
-                        .onErrorReturn(Optional.empty())
-                        .map(opt -> Map.entry(userName, opt)),
-                    IDENTITY_FETCH_CONCURRENCY)
-                .collectList()
-                .map(entries -> {
-                    var result = new PublicIdentityBatch.Result();
-                    for (var entry : entries) {
-                        entry.getValue().ifPresentOrElse(
-                            result.getItems()::add,
-                            () -> result.getSkipped().add(entry.getKey()));
-                    }
-                    return result;
-                });
-        });
+        return newContext().flatMap(ctx -> Flux.fromIterable(distinct)
+            .flatMapSequential(userName -> aggregateAndCache(ctx, userName)
+                    .map(Optional::of)
+                    .defaultIfEmpty(Optional.empty())
+                    // 单个用户失败不影响整批
+                    .onErrorReturn(Optional.empty())
+                    .map(opt -> Map.entry(userName, opt)),
+                IDENTITY_FETCH_CONCURRENCY)
+            .collectList()
+            .map(entries -> {
+                var result = new PublicIdentityBatch.Result();
+                for (var entry : entries) {
+                    entry.getValue().ifPresentOrElse(
+                        result.getItems()::add,
+                        () -> result.getSkipped().add(entry.getKey()));
+                }
+                return result;
+            }));
     }
 
     // ───────────────────────── 聚合 ─────────────────────────
@@ -231,10 +236,15 @@ public class PublicIdentityService {
         vo.setAvatar(StringUtils.hasText(avatar)
             ? externalLinkProcessor.processLink(avatar) : null);
         vo.setBio(user.getSpec().getBio());
-        vo.setRegisteredAt(user.getSpec().getRegisteredAt());
+        // spec.registeredAt 可为空；使用资源创建时间兜底，使「加入时间」对所有用户恒有值，
+        // 否则 registeredAt 缺失的用户在无勋章时，展柜行的 OR 渲染门槛会连加入时间一起吞掉。
+        var registeredAt = user.getSpec().getRegisteredAt();
+        vo.setRegisteredAt(registeredAt != null
+            ? registeredAt
+            : user.getMetadata().getCreationTimestamp());
         applyDisplayConfig(vo, ctx.display());
 
-        var identityMono = ctx.display().isEnabledIdentityMark()
+        var identityMono = shouldLoadIdentityMarks(ctx.basic())
             ? loadIdentityMarks(userName, ctx).doOnNext(vo::setIdentityMarks)
             : Mono.just(List.<PublicIdentityVo.IdentityMarkVo>of());
 
@@ -249,35 +259,96 @@ public class PublicIdentityService {
 
     private void applyDisplayConfig(PublicIdentityVo vo, DisplaySetting display) {
         var config = vo.getDisplay();
-        config.setIdentityLineShowPrimaryBadge(display.isIdentityLineShowPrimaryBadge());
-        config.setIdentityLineIdentityLimit(display.getIdentityLineIdentityLimit());
-        config.setUserCardShowcaseBadgeLimit(display.getUserCardShowcaseBadgeLimit());
-        config.setUserCardIdentityLimit(display.getUserCardIdentityLimit());
+        copyIdentityLine(config.getIdentityLine(), display.getIdentityLine());
+        copyAvatar(config.getAvatar(), display.getAvatar());
+        copyUserCard(config.getUserCard(), display.getUserCard());
         config.setUserCardLinkTemplate(display.getUserCardLinkTemplate());
+        // 非法 / 空值一律回落 halo，公开快照只出现 halo | hash
+        config.setAvatarFallbackStyle(
+            "hash".equals(display.getAvatarFallbackStyle()) ? "hash" : "halo");
+    }
+
+    private static void copyIdentityLine(PublicIdentityVo.IdentityLineDisplayVo target,
+        DisplaySetting.IdentityLine source) {
+        if (source == null) {
+            return;
+        }
+        target.setShowTitle(source.isShowTitle());
+        target.setShowPrimaryBadge(source.isShowPrimaryBadge());
+        target.setShowNameStyle(source.isShowNameStyle());
+        target.setShowIdentityMarks(source.isShowIdentityMarks());
+        // FormKit 用 if 藏起数量框时可能不落库，0 / 越界回落到设置默认
+        target.setIdentityLimit(clamp(source.getIdentityLimit(), 1, 3, 1));
+    }
+
+    private static void copyAvatar(PublicIdentityVo.AvatarDisplayVo target,
+        DisplaySetting.Avatar source) {
+        if (source == null) {
+            return;
+        }
+        target.setShowFrame(source.isShowFrame());
+    }
+
+    private static void copyUserCard(PublicIdentityVo.UserCardDisplayVo target,
+        DisplaySetting.UserCard source) {
+        if (source == null) {
+            return;
+        }
+        target.setShowTitle(source.isShowTitle());
+        target.setShowPrimaryBadge(source.isShowPrimaryBadge());
+        target.setShowShowcase(source.isShowShowcase());
+        target.setShowNameStyle(source.isShowNameStyle());
+        target.setShowIdentityMarks(source.isShowIdentityMarks());
+        target.setShowAvatarFrame(source.isShowAvatarFrame());
+        target.setShowCardBackground(source.isShowCardBackground());
+        target.setShowcaseBadgeLimit(clamp(source.getShowcaseBadgeLimit(), 0, 8, 5));
+        target.setIdentityLimit(clamp(source.getIdentityLimit(), 1, 5, 3));
+    }
+
+    private static int clamp(int value, int min, int max, int fallback) {
+        return value < min || value > max ? fallback : value;
     }
 
     // ── 身份标识 ──
 
     /**
      * 解析用户当前生效的身份标识（按角色映射），供 UC 等模块复用。
-     * 尊重全局开关：{@code enabledIdentityMark} 关闭时返回空列表。
+     * 尊重类型总闸：{@code enabledIdentityMark} 关闭时返回空列表。
+     * 场景开关只裁前台组件，不影响 UC 自查。
      */
     public Mono<List<PublicIdentityVo.IdentityMarkVo>> resolveIdentityMarks(String userName) {
         if (!StringUtils.hasText(userName)) {
             return Mono.just(List.of());
         }
-        return settingService.getDisplaySetting()
-            .flatMap(display -> display.isEnabledIdentityMark()
-                ? loadIdentityMarks(userName, newContext(display))
+        return newContext()
+            .flatMap(ctx -> ctx.basic().isEnabledIdentityMark()
+                ? loadIdentityMarks(userName, ctx)
                 : Mono.just(List.of()));
+    }
+
+    /**
+     * 公开身份：只看类型总闸。场景开关只裁 {@code hip-*} 组件，
+     * 不在这里把 {@code identityMarks} 裁空——Finder / HTTP / 其它插件自行渲染还要用。
+     */
+    private static boolean shouldLoadIdentityMarks(BasicSetting basic) {
+        return basic.isEnabledIdentityMark();
+    }
+
+    /**
+     * 取两个场景配置的较大值（再按硬上限钳制），避免配置只要 2 个时仍查 10 个。
+     * 不看场景开关：UC 自查也走这条上限。
+     */
+    private static int identityMarkFetchLimit(DisplaySetting display) {
+        int line = display.getIdentityLine() != null
+            ? clamp(display.getIdentityLine().getIdentityLimit(), 1, 3, 1) : 1;
+        int card = display.getUserCard() != null
+            ? clamp(display.getUserCard().getIdentityLimit(), 1, 5, 3) : 3;
+        return Math.min(Math.max(line, card), IDENTITY_MARK_MAX);
     }
 
     private Mono<List<PublicIdentityVo.IdentityMarkVo>> loadIdentityMarks(String userName,
         AggregationContext ctx) {
-        // 取各场景配置的最大值（再按硬上限钳制），避免配置只要 2 个时仍查 10 个
-        int limit = Math.max(ctx.display().getIdentityLineIdentityLimit(),
-            ctx.display().getUserCardIdentityLimit());
-        int take = Math.min(Math.max(limit, 1), IDENTITY_MARK_MAX);
+        int take = identityMarkFetchLimit(ctx.display());
         return roleService.getRolesByUsername(userName)
             .collect(HashSet<String>::new, HashSet::add)
             .flatMap(userRoles -> {
@@ -297,20 +368,31 @@ public class PublicIdentityService {
     }
 
     private PublicIdentityVo.IdentityMarkVo toIdentityMarkVo(UserIdentityMarkMapping mapping) {
+        var spec = mapping.getSpec();
         var vo = new PublicIdentityVo.IdentityMarkVo();
-        vo.setDisplayName(mapping.getSpec().getDisplayName());
-        var icon = mapping.getSpec().getIcon();
-        // data: 图标（Console iconify 控件物化的自包含产物）绕过外链处理——
-        // processLink 面向相对/站内路径的绝对化，对 data URI 无意义且行为未定义
-        if (!StringUtils.hasText(icon)) {
+        vo.setDisplayName(spec.getDisplayName());
+        // 对外 DTO 按 displayMode 挑 icon / color，形态字段本身不输出。
+        var mode = IdentityMarkMode.resolve(spec.getDisplayMode(), spec.getIcon(),
+            spec.getImage());
+        if (mode == IdentityMarkMode.TEXT) {
             vo.setIcon(null);
-        } else if (icon.startsWith("data:")) {
-            vo.setIcon(icon);
+            vo.setColor(spec.getColor());
         } else {
-            vo.setIcon(externalLinkProcessor.processLink(icon));
+            var source = mode.pickSource(spec.getIcon(), spec.getImage());
+            // data: 图标（Console iconify 控件物化的自包含产物）绕过外链处理——
+            // processLink 面向相对/站内路径的绝对化，对 data URI 无意义且行为未定义
+            if (!StringUtils.hasText(source)) {
+                // 形态选了图却没配图：严格按形态输出，不回落到 color
+                // （另一形态的 color 只是草稿，输出它会让缺图的标识意外变成彩色文字牌）
+                vo.setIcon(null);
+            } else if (source.startsWith("data:")) {
+                vo.setIcon(source);
+            } else {
+                vo.setIcon(externalLinkProcessor.processLink(source));
+            }
+            vo.setColor(null);
         }
-        vo.setColor(mapping.getSpec().getColor());
-        vo.setPriority(mapping.getSpec().getPriority());
+        vo.setPriority(spec.getPriority());
         return vo;
     }
 
@@ -325,25 +407,25 @@ public class PublicIdentityService {
 
     private Mono<PublicIdentityVo.DecorationsVo> buildDecorations(String userName,
         UserDecorationProfile.Spec spec, AggregationContext ctx) {
-        var display = ctx.display();
+        var basic = ctx.basic();
         // 收集所有佩戴的资产名（按全局类型开关过滤）
         var equipped = new LinkedHashSet<String>();
-        if (display.isEnabledAvatarFrame() && StringUtils.hasText(spec.getAvatarFrame())) {
+        if (basic.isEnabledAvatarFrame() && StringUtils.hasText(spec.getAvatarFrame())) {
             equipped.add(spec.getAvatarFrame());
         }
-        if (display.isEnabledTitle() && StringUtils.hasText(spec.getTitle())) {
+        if (basic.isEnabledTitle() && StringUtils.hasText(spec.getTitle())) {
             equipped.add(spec.getTitle());
         }
-        if (display.isEnabledBadge() && StringUtils.hasText(spec.getPrimaryBadge())) {
+        if (basic.isEnabledBadge() && StringUtils.hasText(spec.getPrimaryBadge())) {
             equipped.add(spec.getPrimaryBadge());
         }
-        if (display.isEnabledBadge() && !CollectionUtils.isEmpty(spec.getBadgeShowcase())) {
+        if (basic.isEnabledBadge() && !CollectionUtils.isEmpty(spec.getBadgeShowcase())) {
             spec.getBadgeShowcase().stream().filter(StringUtils::hasText).forEach(equipped::add);
         }
-        if (display.isEnabledCardBackground() && StringUtils.hasText(spec.getCardBackground())) {
+        if (basic.isEnabledCardBackground() && StringUtils.hasText(spec.getCardBackground())) {
             equipped.add(spec.getCardBackground());
         }
-        if (display.isEnabledNameStyle() && StringUtils.hasText(spec.getNameStyle())) {
+        if (basic.isEnabledNameStyle() && StringUtils.hasText(spec.getNameStyle())) {
             equipped.add(spec.getNameStyle());
         }
         if (equipped.isEmpty()) {
@@ -447,7 +529,6 @@ public class PublicIdentityService {
         }
         var payload = spec.getPayload();
         if (payload != null) {
-            vo.setTitleMode(payload.getTitleMode());
             vo.setTitleText(payload.getTitleText());
             vo.setTitleColor(payload.getTitleColor());
             vo.setTitleBackground(payload.getTitleBackground());

@@ -21,9 +21,8 @@ import run.halo.app.extension.controller.Reconciler;
 /**
  * 装饰元数据（分类 / 标签 / 稀有度）删除级联清理基类。
  *
- * <p>对齐 Halo 官方分类 / 标签删除语义：删除时由 Reconciler 级联从所有引用资产
- * （含草稿 / 停用 / 归档）移除该引用。引用匹配采用索引候选 + 内存精确比较，
- * 不依赖索引对数组字段的 equal 语义。
+ * <p>删除时由 Reconciler 级联从所有引用资产（含草稿 / 停用 / 归档）移除该引用。
+ * 引用匹配采用索引候选 + 内存精确比较，不依赖索引对数组字段的 equal 语义。
  */
 @Slf4j
 public abstract class AbstractMetadataReconciler<E extends AbstractExtension>

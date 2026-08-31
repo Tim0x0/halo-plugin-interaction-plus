@@ -35,8 +35,8 @@ import run.halo.app.extension.index.query.Condition;
 /**
  * 装饰元数据（分类 / 标签 / 稀有度）服务。
  *
- * <p>删除为级联模式（对齐 Halo 官方分类 / 标签删除语义）：
- * 任何时候可删，引用清理由 Reconciler 在删除后级联完成（从所有引用资产移除该引用）。
+ * <p>删除为级联模式：任何时候可删，引用清理由 Reconciler 在删除后级联完成
+ * （从所有引用资产移除该引用）。
  * 引用统计用索引候选 + 内存精确匹配（规避数组字段索引 equal 的子串语义疑虑）。
  */
 @Service
@@ -51,8 +51,8 @@ public class DecorationMetadataService {
     private final ReactiveExtensionClient client;
 
     /**
-     * 稀有度字典（内部名 → 实体）一次性加载，供授予可发判定 / 公开展示内联稀有度属性
-     * 等聚合复用（避免 N+1；此前授予与公开身份两个 service 各自持有一份逐字相同实现）。
+     * 稀有度字典（内部名 → 实体）一次性加载，供授予可发判定与公开展示聚合复用，
+     * 避免逐项查询。
      */
     public Mono<Map<String, UserDecorationRarity>> loadRarityMap() {
         return client.listAll(UserDecorationRarity.class,
@@ -149,7 +149,7 @@ public class DecorationMetadataService {
         return deleteMetadata(UserDecorationTag.class, name);
     }
 
-    /** 标签引用数。List.contains 精确比较，不依赖索引对数组字段的 equal 语义（B5）。 */
+    /** 标签引用数。List.contains 精确比较，不依赖索引对数组字段的 equal 语义。 */
     public Mono<Long> countTagUsage(String name) {
         return countUsage("spec.tagNames", name,
             asset -> asset.getSpec().getTagNames() != null
@@ -266,6 +266,7 @@ public class DecorationMetadataService {
             throw InteractionPlusException.badRequest(ErrorCodes.VALIDATION_FAILED,
                 "参数校验失败", "显示名称不能为空。");
         }
+        // color 不在此校验：标签 / 稀有度的 spec 上都有 @Schema(pattern)，Halo 写入时按 schema 校验
     }
 
     private <T> Mono<T> notFound(String label) {

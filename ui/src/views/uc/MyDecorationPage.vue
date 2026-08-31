@@ -3,7 +3,7 @@
 // 左侧库存区（类型 Tab + 筛选 + 卡片网格，滚动），右侧预览面板 sticky
 // （真实场景预览可切换 + 槽位摘要，点击槽位过滤左侧列表）。
 // 先预览后保存语义不变；离开页面有未保存改动时确认。
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import {
   Dialog,
@@ -13,26 +13,25 @@ import {
   VCard,
   VEmpty,
   VPageHeader,
+  VPagination,
   VTabbar,
 } from '@halo-dev/components'
 import { consoleApiClient } from '@halo-dev/api-client'
 import confetti from 'canvas-confetti'
 import { ucApi } from '@/api'
 import AssetThumb from '@/components/AssetThumb.vue'
-import DecorationPreview from '@/components/DecorationPreview.vue'
-import type { PreviewScene } from '@/components/DecorationPreview.vue'
 import FilterDropdown from '@/components/filter/FilterDropdown.vue'
 import FilterChips from '@/components/filter/FilterChips.vue'
 import type { FilterChip } from '@/components/filter/FilterChips.vue'
 import ListSkeleton from '@/components/ListSkeleton.vue'
 import ListError from '@/components/ListError.vue'
 import type {
+  IdentityMark,
   InvalidEquipItem,
   InventoryItem,
   MetadataOptions,
-  PreviewData,
-  PreviewIdentityMark,
   ProfileView,
+  PublicIdentity,
 } from '@/types'
 import {
   FILTER_NONE,
@@ -43,7 +42,14 @@ import {
   TYPE_LABELS,
 } from '@/utils/decoration'
 import type { MetadataOptionKind } from '@/utils/decoration'
-import type { PreviewStatItem } from '@/types'
+import {
+  DISPLAY_DEFAULTS,
+  fromInventoryItem,
+  PREVIEW_SCENES,
+  sceneComponents,
+  withDecorations,
+} from '@/utils/preview-identity'
+import { loadRuntimeForPreview, type HipRuntime } from '@/utils/runtime-loader'
 
 // 展示勋章佩戴上限（与后端 InteractionPlusConst.BADGE_SHOWCASE_MAX 同值联动）
 const BADGE_SHOWCASE_MAX = 8
@@ -55,7 +61,7 @@ const saving = ref(false)
 const inventory = ref<InventoryItem[]>([])
 const invalidItems = ref<InvalidEquipItem[]>([])
 // 当前生效的身份标识（只读，按角色映射，由后端 /profile 一并返回）
-const identityMarks = ref<PreviewIdentityMark[]>([])
+const identityMarks = ref<IdentityMark[]>([])
 const metadataOptions = ref<MetadataOptions | null>(null)
 
 // ── 选择状态（保存前仅本地预览） ──────────────────────
@@ -135,76 +141,39 @@ async function loadCurrentUser() {
       registeredAt: data.user.spec.registeredAt ?? undefined,
     }
     if (currentUser.value.userName) {
-      loadIdentityStats(currentUser.value.userName)
+      loadBaseIdentity(currentUser.value.userName)
     }
   } catch {
     currentUser.value = {}
   }
 }
 
-// ── 互动统计（真实数据进预览卡片，与真卡同源） ────────────
+// ── 预览底座（真实身份数据，与真卡同源） ──────────────────
 
-/** 统计数值展示：≥1 万折算为「x.x万」，其余千分位（同步 runtime hip-user-card 的 formatCount）。 */
-function formatCount(value: number): string {
-  if (!Number.isFinite(value) || value < 0) {
-    return '0'
-  }
-  if (value >= 10000) {
-    const w = value / 10000
-    const text = w >= 100 ? Math.round(w).toString() : w.toFixed(1).replace(/\.0$/, '')
-    return `${text}万`
-  }
-  return value.toLocaleString('en-US')
-}
-
-const identityStats = ref<{ items: PreviewStatItem[]; badgeTotal?: number }>({ items: [] })
-
-// 展柜格数跟随显示设置（管理员可调 0-8）：真卡按 display.userCardShowcaseBadgeLimit
-// 渲染，预览同源取值；拉取失败时 undefined → 预览组件回落默认 5
-const showcaseLimit = ref<number>()
+/**
+ * 当前用户的公开身份，作为预览底座 —— 真实统计、身份标识、加入时间、显示设置全在里面。
+ * 草稿只覆盖 decorations 六个槽位（见 previewIdentity），其余原样交给模板。
+ */
+const baseIdentity = shallowRef<PublicIdentity | null>(null)
 
 // 标识图标 404 兜底：裂图回落文字牌（按 URL 记失效，对齐 runtime「失败切文本牌」）
 const brokenMarkIcons = ref(new Set<string>())
 
-/** 拉取公开身份聚合的互动统计；失败静默（预览回落组件内示例值）。 */
-async function loadIdentityStats(userName: string) {
+/**
+ * 拉当前用户的公开身份当底座。
+ *
+ * <p>走 runtime 的 fetchIdentity 而不是自己发请求：接口地址、失败降级、并发合并都在
+ * 那一份实现里，前台与这里读到的是同一个东西。
+ *
+ * <p>失败静默 —— 预览回落到只有基本信息的最小底座（见 fallbackBase），
+ * 表现与前台拿不到数据时一致：统计行与加入时间整块不显示，而不是编一份假的出来。
+ */
+async function loadBaseIdentity(userName: string) {
   try {
-    const response = await fetch(
-      `/apis/api.interaction-plus.timxs.com/v1alpha1/identity/${encodeURIComponent(userName)}`,
-      { headers: { Accept: 'application/json' } },
-    )
-    if (!response.ok) {
-      return
-    }
-    const identity = await response.json()
-    const limit = identity?.display?.userCardShowcaseBadgeLimit
-    if (typeof limit === 'number') {
-      showcaseLimit.value = limit
-    }
-    const stats = identity?.stats
-    if (!stats) {
-      return
-    }
-    const items: PreviewStatItem[] = [
-      { label: '文章', value: formatCount(stats.posts ?? 0) },
-      { label: '评论', value: formatCount(stats.comments ?? 0) },
-    ]
-    if (stats.decorations) {
-      items.push({ label: '勋章', value: formatCount(stats.decorations.badge ?? 0) })
-    }
-    for (const extra of stats.extras ?? []) {
-      if (extra?.label && extra?.value) {
-        items.push({ label: extra.label, value: extra.value })
-      }
-    }
-    // 关闭公开装扮墙时 decorations 为 null：badgeTotal 传 0（与真卡一致，不显示「+N」），
-    // 不可留 undefined——那会让预览回落示例总数，显示假数据
-    identityStats.value = {
-      items,
-      badgeTotal: stats.decorations ? (stats.decorations.badge ?? 0) : 0,
-    }
+    const loaded = await loadRuntimeForPreview()
+    baseIdentity.value = await loaded.fetchIdentity(userName)
   } catch {
-    // 静默：预览回落示例值
+    // runtime 不可用时预览区已有独立提示，这里不必再报
   }
 }
 
@@ -269,11 +238,6 @@ const STATUS_ALL = '__all__'
 
 const activeType = ref('')
 
-const typeTabs = [
-  { id: '', label: '全部' },
-  ...Object.entries(TYPE_LABELS).map(([value, label]) => ({ id: value, label })),
-]
-
 const filters = ref({
   status: undefined as string | undefined,
   categoryName: undefined as string | undefined,
@@ -285,7 +249,7 @@ const STATUS_ITEMS = [
   { label: '全部状态', value: STATUS_ALL },
   { label: '已过期', value: 'expired' },
   { label: '已撤销', value: 'revoked' },
-  { label: '已停用', value: 'disabled' },
+  { label: '已下架', value: 'disabled' },
 ]
 
 function metadataFilterItems(kind: 'categories' | 'tags' | 'rarities', noneLabel: string) {
@@ -302,7 +266,41 @@ const categoryItems = computed(() => metadataFilterItems('categories', '未分�
 const tagItems = computed(() => metadataFilterItems('tags', '无标签'))
 const rarityItems = computed(() => metadataFilterItems('rarities', '无稀有度'))
 
-/** 状态排序权重：佩戴中 → 可用 → 过期 → 停用 → 撤销 */
+/** 状态 / 分类 / 标签 / 稀有度（不含类型 Tab）。历史装饰默认隐藏。 */
+function matchesFilters(item: InventoryItem): boolean {
+  const f = filters.value
+  if (f.status === undefined) {
+    if (item.status !== 'available') return false
+  } else if (f.status !== STATUS_ALL && item.status !== f.status) {
+    return false
+  }
+  if (f.categoryName === FILTER_NONE) {
+    if (item.categoryName) return false
+  } else if (f.categoryName && item.categoryName !== f.categoryName) {
+    return false
+  }
+  if (f.tagName === FILTER_NONE) {
+    if (item.tagNames?.length) return false
+  } else if (f.tagName && !item.tagNames?.includes(f.tagName)) {
+    return false
+  }
+  if (f.rarityName === FILTER_NONE) {
+    if (item.rarityName) return false
+  } else if (f.rarityName && item.rarityName !== f.rarityName) {
+    return false
+  }
+  return true
+}
+
+/** 当前筛选下的库存（未按类型切）。 */
+const scopedInventory = computed(() => inventory.value.filter(matchesFilters))
+
+const typeTabs = [
+  { id: '', label: '全部' },
+  ...Object.entries(TYPE_LABELS).map(([value, label]) => ({ id: value, label })),
+]
+
+/** 状态排序权重：佩戴中 → 可用 → 过期 → 下架 → 撤销 */
 function sortWeight(item: InventoryItem): number {
   if (isEquipped(item)) return 0
   switch (item.status) {
@@ -320,34 +318,47 @@ function sortWeight(item: InventoryItem): number {
 }
 
 const filteredInventory = computed(() => {
-  const f = filters.value
-  const list = inventory.value.filter((item) => {
-    if (activeType.value && item.type !== activeType.value) return false
-    // 历史装饰默认隐藏：未筛选状态时只显示可用项
-    if (f.status === undefined) {
-      if (item.status !== 'available') return false
-    } else if (f.status !== STATUS_ALL && item.status !== f.status) {
-      return false
-    }
-    if (f.categoryName === FILTER_NONE) {
-      if (item.categoryName) return false
-    } else if (f.categoryName && item.categoryName !== f.categoryName) {
-      return false
-    }
-    if (f.tagName === FILTER_NONE) {
-      if (item.tagNames?.length) return false
-    } else if (f.tagName && !item.tagNames?.includes(f.tagName)) {
-      return false
-    }
-    if (f.rarityName === FILTER_NONE) {
-      if (item.rarityName) return false
-    } else if (f.rarityName && item.rarityName !== f.rarityName) {
-      return false
-    }
-    return true
-  })
+  const list = scopedInventory.value.filter(
+    (item) => !activeType.value || item.type === activeType.value,
+  )
   return [...list].sort((a, b) => sortWeight(a) - sortWeight(b))
 })
+
+// 前端分页：库存接口一次 listAll，全量留给预览 / 槽位反查；分页只切当前筛选结果。
+const page = ref(1)
+const size = ref(20)
+
+const pagedInventory = computed(() => {
+  const list = filteredInventory.value
+  if (!list.length) return []
+  const maxPage = Math.max(1, Math.ceil(list.length / size.value))
+  const current = Math.min(Math.max(1, page.value), maxPage)
+  return list.slice((current - 1) * size.value, current * size.value)
+})
+
+watch([() => filteredInventory.value.length, size], () => {
+  const maxPage = Math.max(1, Math.ceil(filteredInventory.value.length / size.value))
+  if (page.value > maxPage) {
+    page.value = maxPage
+  }
+})
+
+function onPaginationChange(value: { page: number; size: number }) {
+  page.value = value.page
+  size.value = value.size
+}
+
+/** 改 Tab / 筛选时回到第 1 页。 */
+function resetPage() {
+  page.value = 1
+}
+
+function onTypeChange(id: string | number) {
+  const next = String(id)
+  if (activeType.value === next) return
+  activeType.value = next
+  resetPage()
+}
 
 const metadataLabel = (kind: MetadataOptionKind, name?: string) =>
   metadataLabelOf(metadataOptions.value, kind, name)
@@ -378,6 +389,7 @@ const chips = computed<FilterChip[]>(() => {
 
 function removeChip(key: string) {
   ;(filters.value as Record<string, unknown>)[key] = undefined
+  resetPage()
 }
 
 function clearChips() {
@@ -387,6 +399,7 @@ function clearChips() {
     tagName: undefined,
     rarityName: undefined,
   }
+  resetPage()
 }
 
 /** 稀有度描边色（取稀有度配置色）。 */
@@ -473,48 +486,95 @@ function toggleShowcaseBadge(item: InventoryItem) {
   list.push(item.assetName)
 }
 
-// ── 右侧预览面板：场景切换 + 槽位摘要 ──────────────────
+// ── 右侧预览面板：组件切换 + 槽位摘要 ──────────────────
 
-const previewScene = ref<PreviewScene>('user_card')
+const previewScene = ref('card')
 
-const sceneTabs: Array<{ id: PreviewScene; label: string }> = [
-  { id: 'identity_line', label: '身份行' },
-  { id: 'user_card', label: '卡片' },
-]
+const sceneTabs = PREVIEW_SCENES
 
 function findItem(assetName?: string): InventoryItem | undefined {
   if (!assetName) return undefined
   return inventory.value.find((item) => item.assetName === assetName)
 }
 
-const previewData = computed<PreviewData>(() => {
-  const avatarFrame = findItem(selection.value.avatarFrame)
-  const title = findItem(selection.value.title)
-  const primaryBadge = findItem(selection.value.primaryBadge)
-  const cardBackground = findItem(selection.value.cardBackground)
-  const nameStyle = findItem(selection.value.nameStyle)
-  return {
-    displayName: currentUser.value.displayName,
-    avatar: currentUser.value.avatar,
-    bio: currentUser.value.bio,
-    avatarFrameUrl: avatarFrame?.asset?.url,
-    titleMode: title?.payload?.titleMode,
-    titleImageUrl: title?.asset?.url,
-    titleText: title?.payload?.titleText,
-    titleColor: title?.payload?.titleColor,
-    titleBackground: title?.payload?.titleBackground,
-    titleBackgroundSecondary: title?.payload?.titleBackgroundSecondary,
-    primaryBadgeUrl: primaryBadge?.asset?.url,
-    badgeShowcaseUrls: selection.value.badgeShowcase
-      .map((name) => findItem(name)?.asset?.url)
-      .filter((url): url is string => !!url),
-    cardBackgroundUrl: cardBackground?.asset?.url,
-    nameStyle: nameStyle?.payload?.nameStyle,
-    identityMarks: identityMarks.value,
-    // 真实互动统计 / 勋章总数 / 加入时间：与真卡同源；未加载到时组件回落示例值
-    stats: identityStats.value.items.length ? identityStats.value.items : undefined,
-    badgeTotal: identityStats.value.badgeTotal,
-    registeredAt: currentUser.value.registeredAt,
+/**
+ * 公开身份拿不到时的最小底座：只有当前用户的基本信息 + /profile 返回的身份标识。
+ *
+ * <p>不补示例统计 —— 那会让用户看到「128 篇文章」这种假数据。空着才是对的：
+ * 模板对空统计的反应是整块删除，与前台此刻的表现一致。
+ */
+const fallbackBase = computed<PublicIdentity>(() => ({
+  userName: currentUser.value.userName || '',
+  displayName: currentUser.value.displayName || currentUser.value.userName || '',
+  avatar: currentUser.value.avatar,
+  bio: currentUser.value.bio,
+  registeredAt: currentUser.value.registeredAt,
+  identityMarks: identityMarks.value,
+  decorations: { badgeShowcase: [] },
+  display: DISPLAY_DEFAULTS,
+}))
+
+/**
+ * 预览身份：真实底座 + 未保存的佩戴草稿。
+ *
+ * <p>底座里的统计、身份标识、显示设置一概不动 —— 接口返回的 decorations 是**已保存**
+ * 的那套，只有这六个槽位需要换成草稿。
+ */
+const previewIdentity = computed<PublicIdentity>(() =>
+  withDecorations(baseIdentity.value || fallbackBase.value, {
+    avatarFrame: fromInventoryItem(findItem(selection.value.avatarFrame)),
+    title: fromInventoryItem(findItem(selection.value.title)),
+    primaryBadge: fromInventoryItem(findItem(selection.value.primaryBadge)),
+    badgeShowcase: selection.value.badgeShowcase
+      .map((name) => fromInventoryItem(findItem(name)))
+      .filter((item): item is NonNullable<typeof item> => !!item),
+    cardBackground: fromInventoryItem(findItem(selection.value.cardBackground)),
+    nameStyle: fromInventoryItem(findItem(selection.value.nameStyle)),
+  }),
+)
+
+// ── 预览渲染（与前台同一个模板引擎） ────────────────────
+
+const previewRef = ref<HTMLElement | null>(null)
+const runtime = shallowRef<HipRuntime | null>(null)
+const previewError = ref('')
+
+onMounted(async () => {
+  try {
+    runtime.value = await loadRuntimeForPreview()
+  } catch (e) {
+    previewError.value = e instanceof Error ? e.message : String(e)
+  }
+})
+
+// flush post：容器由 v-else 控制，渲染前要确保那个 div 已经在文档里
+watch([previewIdentity, previewScene, runtime], () => renderPreview(), { flush: 'post' })
+
+function renderPreview(): void {
+  const container = previewRef.value
+  if (!container || !runtime.value) {
+    return
+  }
+  runtime.value
+    .renderPreview(container, {
+      component: sceneComponents(previewScene.value),
+      data: previewIdentity.value,
+      // fit 的基准是内容实际占地，装得下就 1:1 —— 行内档比面板小，实际不会被缩；
+      // 只有 560 的用户卡真的超宽才等比缩。预览看的是搭配效果，不验交互，展开后锁死
+      fit: true,
+      locked: true,
+    })
+    .then(() => {
+      previewError.value = ''
+    })
+    .catch((e) => {
+      previewError.value = e instanceof Error ? e.message : String(e)
+    })
+}
+
+onBeforeUnmount(() => {
+  if (previewRef.value) {
+    runtime.value?.disposePreview(previewRef.value)
   }
 })
 
@@ -566,7 +626,9 @@ function removeShowcaseAt(index: number) {
 
 /** 点击槽位 → 左侧列表过滤到对应类型 */
 function focusSlotType(type: string) {
+  if (activeType.value === type) return
   activeType.value = type
+  resetPage()
 }
 
 // ── 保存 ──────────────────────────────────────────────
@@ -635,16 +697,37 @@ onMounted(load)
         <VCard :body-class="['!p-0']" class="hip-deco__inventory">
           <template #header>
             <div class="hip-toolbar">
-              <VTabbar v-model:active-id="activeType" :items="typeTabs" type="outline" />
+              <VTabbar
+                :active-id="activeType"
+                :items="typeTabs"
+                type="outline"
+                @update:active-id="onTypeChange"
+              />
               <div class="hip-toolbar__filters">
-                <FilterDropdown v-model="filters.status" label="状态" :items="STATUS_ITEMS" />
+                <FilterDropdown
+                  v-model="filters.status"
+                  label="状态"
+                  :items="STATUS_ITEMS"
+                  @update:model-value="resetPage"
+                />
                 <FilterDropdown
                   v-model="filters.categoryName"
                   label="分类"
                   :items="categoryItems"
+                  @update:model-value="resetPage"
                 />
-                <FilterDropdown v-model="filters.tagName" label="标签" :items="tagItems" />
-                <FilterDropdown v-model="filters.rarityName" label="稀有度" :items="rarityItems" />
+                <FilterDropdown
+                  v-model="filters.tagName"
+                  label="标签"
+                  :items="tagItems"
+                  @update:model-value="resetPage"
+                />
+                <FilterDropdown
+                  v-model="filters.rarityName"
+                  label="稀有度"
+                  :items="rarityItems"
+                  @update:model-value="resetPage"
+                />
               </div>
             </div>
           </template>
@@ -657,7 +740,7 @@ onMounted(load)
           />
           <div v-else class="hip-inv">
             <div
-              v-for="item in filteredInventory"
+              v-for="item in pagedInventory"
               :key="item.assetName"
               class="hip-inv__card"
               :class="{
@@ -680,6 +763,14 @@ onMounted(load)
                 <!-- 类型 tag 左上角（与 Console 资产卡一致） -->
                 <span class="hip-inv__type">{{ item.type ? TYPE_LABELS[item.type] : '装饰' }}</span>
                 <span v-if="isEquipped(item)" class="hip-inv__equipped-mark">✓ 佩戴中</span>
+                <!-- 分类左下角（与 Console 资产卡一致）；右上角留给「佩戴中」 -->
+                <span
+                  v-if="item.categoryName"
+                  class="hip-inv__category"
+                  :title="metadataLabel('categories', item.categoryName)"
+                >
+                  {{ metadataLabel('categories', item.categoryName) }}
+                </span>
               </div>
               <div class="hip-inv__body">
                 <div class="hip-inv__name" :title="item.displayName ?? item.assetName">
@@ -735,6 +826,15 @@ onMounted(load)
               </div>
             </div>
           </div>
+          <template #footer>
+            <VPagination
+              :page="page"
+              :size="size"
+              :total="filteredInventory.length"
+              :size-options="[20, 50, 100]"
+              @change="onPaginationChange"
+            />
+          </template>
         </VCard>
 
         <!-- 右：预览面板（sticky，常驻可见） -->
@@ -753,11 +853,11 @@ onMounted(load)
               </button>
             </div>
             <div class="hip-panel__preview">
-              <DecorationPreview
-                :data="previewData"
-                :scenes="[previewScene]"
-                :showcase-limit="showcaseLimit"
-              />
+              <p v-if="previewError" class="hip-panel__preview-error">
+                预览不可用：{{ previewError }}
+              </p>
+              <!-- 内部完全交给 runtime（它在里面建 iframe），Vue 不碰这层的子节点 -->
+              <div v-else ref="previewRef"></div>
             </div>
             <!-- 身份标识：来自角色，只读展示（不可佩戴 / 卸下） -->
             <div v-if="identityMarks.length" class="hip-panel__marks">
@@ -991,6 +1091,23 @@ onMounted(load)
   border: 1px solid var(--hip-border);
   color: var(--hip-text-secondary);
 }
+/* 分类徽标：缩略图左下角，与 Console 资产卡一致（右上角是「佩戴中」） */
+.hip-inv__category {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  max-width: calc(100% - 16px);
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--hip-border);
+  color: var(--hip-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .hip-inv__equipped-mark {
   position: absolute;
   top: 8px;
@@ -1038,18 +1155,18 @@ onMounted(load)
   color: var(--hip-warning);
   font-weight: 600;
 }
+/* 勋章双钮必须一行：禁换行 + 等分卡宽 */
 .hip-inv__actions {
   display: flex;
   align-items: center;
   gap: 6px;
-  /* 勋章双钮必须一行：禁换行 + 等分卡宽 */
   flex-wrap: nowrap;
   margin-top: 2px;
 }
+/* 兜底：按钮文字绝不折行成两行高（列宽由网格 216 下限保证，不应触发） */
 .hip-inv__actions > * {
   flex: 1;
   min-width: 0;
-  /* 兜底：按钮文字绝不折行成两行高（列宽由网格 216 下限保证，不应触发） */
   white-space: nowrap;
 }
 
@@ -1076,6 +1193,10 @@ onMounted(load)
 }
 .hip-panel__preview {
   padding: 12px 16px;
+}
+.hip-panel__preview-error {
+  font-size: var(--hip-font-caption);
+  color: var(--hip-text-muted);
 }
 /* 身份标识只读区（来自角色，不可操作） */
 .hip-panel__marks {

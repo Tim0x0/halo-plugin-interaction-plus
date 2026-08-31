@@ -138,7 +138,6 @@ public class PublicIdentityQueryApiImpl implements PublicIdentityQueryApi {
             vo.getDisplayName(),
             vo.getUrl(),
             vo.getMediaType(),
-            vo.getTitleMode(),
             vo.getTitleText(),
             vo.getTitleColor(),
             vo.getTitleBackground(),
@@ -146,9 +145,7 @@ public class PublicIdentityQueryApiImpl implements PublicIdentityQueryApi {
             toNameStyle(vo.getNameStyle()),
             vo.getRarityName(),
             vo.getRarityDisplayName(),
-            vo.getRarityColor(),
-            vo.getGrantedAt(),
-            vo.getExpiresAt());
+            vo.getRarityColor());
     }
 
     private static PublicIdentity.NameStyle toNameStyle(UserDecorationAsset.NameStyle nameStyle) {
@@ -161,11 +158,31 @@ public class PublicIdentityQueryApiImpl implements PublicIdentityQueryApi {
 
     private static PublicIdentity.DisplayConfig toDisplayConfig(
         PublicIdentityVo.DisplayConfigVo vo) {
+        var line = vo.getIdentityLine() == null
+            ? new PublicIdentityVo.IdentityLineDisplayVo() : vo.getIdentityLine();
+        var avatar = vo.getAvatar() == null
+            ? new PublicIdentityVo.AvatarDisplayVo() : vo.getAvatar();
+        var card = vo.getUserCard() == null
+            ? new PublicIdentityVo.UserCardDisplayVo() : vo.getUserCard();
         return new PublicIdentity.DisplayConfig(
-            vo.isIdentityLineShowPrimaryBadge(),
-            vo.getIdentityLineIdentityLimit(),
-            vo.getUserCardShowcaseBadgeLimit(),
-            vo.getUserCardIdentityLimit(),
-            vo.getUserCardLinkTemplate());
+            new PublicIdentity.IdentityLineDisplay(
+                line.isShowTitle(),
+                line.isShowPrimaryBadge(),
+                line.isShowNameStyle(),
+                line.isShowIdentityMarks(),
+                line.getIdentityLimit()),
+            new PublicIdentity.AvatarDisplay(avatar.isShowFrame()),
+            new PublicIdentity.UserCardDisplay(
+                card.isShowTitle(),
+                card.isShowPrimaryBadge(),
+                card.isShowShowcase(),
+                card.isShowNameStyle(),
+                card.isShowIdentityMarks(),
+                card.isShowAvatarFrame(),
+                card.isShowCardBackground(),
+                card.getShowcaseBadgeLimit(),
+                card.getIdentityLimit()),
+            vo.getUserCardLinkTemplate(),
+            vo.getAvatarFallbackStyle());
     }
 }

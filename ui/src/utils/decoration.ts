@@ -5,9 +5,8 @@ import type {
   DecorationTypeValue,
   MetadataOptions,
   NameStyle,
-  PreviewData,
 } from '@/types'
-import type { DecorationAsset, GrantView } from '@/types'
+import type { GrantView } from '@/types'
 
 /** 装饰类型中文名。 */
 export const TYPE_LABELS: Record<DecorationTypeValue, string> = {
@@ -42,7 +41,7 @@ export const INVENTORY_STATUS_LABELS: Record<string, string> = {
   available: '可用',
   expired: '已过期',
   revoked: '已撤销',
-  disabled: '已停用',
+  disabled: '已下架',
 }
 
 /** 授予状态（服务端 GrantView.status）展示配置。 */
@@ -107,13 +106,47 @@ export function metadataLabel(
   return options?.[kind]?.find((item) => item.metadata.name === name)?.spec.displayName ?? name
 }
 
+/** 元数据内部名 → 配置色（标签 / 稀有度有 spec.color，分类没有）；未配置返回 undefined。 */
+export function metadataColor(
+  options: MetadataOptions | null | undefined,
+  kind: MetadataOptionKind,
+  name?: string,
+): string | undefined {
+  if (!name) return undefined
+  return options?.[kind]?.find((item) => item.metadata.name === name)?.spec.color
+}
+
 /** 稀有度描边色（取稀有度配置色）。 */
 export function rarityColor(
   options: MetadataOptions | null | undefined,
   name?: string,
 ): string | undefined {
-  if (!name) return undefined
-  return options?.rarities?.find((item) => item.metadata.name === name)?.spec.color
+  return metadataColor(options, 'rarities', name)
+}
+
+/** 标签 chip 内联样式：配置色只作描边，文字保持中性灰。资产列表与预览弹窗共用。 */
+export function tagChipStyle(
+  options: MetadataOptions | null | undefined,
+  name: string,
+): { borderColor: string } | undefined {
+  const color = metadataColor(options, 'tags', name)
+  return color ? { borderColor: color } : undefined
+}
+
+/** 列表标签单行呈现的个数上限，超量折叠成「+N」。 */
+const TAG_CHIP_LIMIT = 2
+
+/**
+ * 列表标签单行只呈现前几个，其余折叠进计数牌。定值而非按宽度测量：
+ * 列宽由 colgroup 定死，行为可预期比多占一行更划算。资产列表与投稿列表共用。
+ */
+export function shownTags(names: string[]): string[] {
+  return names.slice(0, TAG_CHIP_LIMIT)
+}
+
+/** 折叠掉的标签个数（不足上限时为 0）。 */
+export function restTagCount(names: string[]): number {
+  return Math.max(0, names.length - TAG_CHIP_LIMIT)
 }
 
 export const TYPE_OPTIONS = (Object.keys(TYPE_LABELS) as DecorationTypeValue[]).map((value) => ({
@@ -126,20 +159,22 @@ export const STATUS_OPTIONS = (Object.keys(STATUS_LABELS) as DecorationStatusVal
 )
 
 /**
- * 仅接受 3/6 位十六进制颜色，非法值返回空串。与前台 `runtime/src/identity.ts`
+ * 仅接受 3 / 6 / 8 位十六进制颜色，非法值返回空串。与前台 `runtime/src/identity.ts`
  * 的 `safeHexColor` 同一规则（保证预览与前台对畸形数据的降级一致）。
+ * 8 位是 #RRGGBBAA，用来带透明度。
  */
 function safeHexColor(value?: string | null): string {
-  return value && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value) ? value : ''
+  return value && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value) ? value : ''
 }
 
 /**
  * 根据昵称样式配置生成受控的内联样式。
  * 纯色一个颜色；渐变 2-3 个颜色；不支持时降级第一个颜色。
  *
- * ⚠ 双实现同步清单：与前台 `runtime/src/identity.ts` 的 `nameStyleCss`（字符串形式）
- * 是同一规则的两份实现（不同构建产物、刻意不共包），改 hex 白名单、渐变角度或
- * 降级规则时必须两处同改（后端启用校验兜底；保证预览所见即前台所得）。
+ * ⚠ 双实现同步清单：本函数与前台 `runtime/src/identity.ts` 的 `nameStyleCss`
+ * （字符串形式）是同一规则的两份实现（不同构建产物、刻意不共包）。
+ * 改**hex 白名单、渐变角度（90deg）、声明组合、降级规则**时必须两处同改，
+ * 否则后台缩略图与前台效果不一致 —— 不报错、只是站长看到的与访客不同。
  */
 export function nameStyleCss(nameStyle?: NameStyle | null): Record<string, string> {
   if (!nameStyle || !nameStyle.colors || nameStyle.colors.length === 0) {
@@ -162,12 +197,11 @@ export function nameStyleCss(nameStyle?: NameStyle | null): Record<string, strin
 }
 
 /**
- * 称号的内联样式：双背景色渲染线性渐变。仅 text 形态（文字牌）使用；
- * image 形态（整图）由各渲染端直接走 <img> 分支，不经过本函数。
+ * 称号文字牌的内联样式（双背景 135° 渐变）。整图不走本函数。
  *
- * ⚠ 双实现同步清单：与前台 `runtime/src/card-parts.ts` 的 `titleHtml` 内联的
- * 样式规则（含 hex 颜色白名单过滤、text/image 形态分支）是同一规则的两份实现，
- * 改规则时必须两处同改。
+ * ⚠ 双实现同步清单：本函数与前台 `runtime/src/card-parts.ts` 的 `textTitleNode`
+ * 内联的样式规则是同一规则的两份实现（不同构建产物、刻意不共包）。
+ * 改**hex 白名单、渐变角度（135deg）、双色/单色分支**时必须两处同改。
  */
 export function titleCss(payload?: AssetPayload | null): Record<string, string> {
   const style: Record<string, string> = {}
@@ -186,7 +220,7 @@ export function titleCss(payload?: AssetPayload | null): Record<string, string> 
 }
 
 /**
- * 列表缩略图地址：优先走宿主附件缩略图（避免列表直接加载原图，F14），
+ * 列表缩略图地址：优先走宿主附件缩略图（避免列表直接加载原图），
  * 宿主能力不可用或外链素材时回退原图。
  */
 export function thumbnailUrl(url?: string, size: 'S' | 'M' | 'L' | 'XL' = 'S'): string | undefined {
@@ -213,32 +247,4 @@ export function formatDateTime(value?: string | null): string {
     return '-'
   }
   return date.toLocaleString('zh-CN', { hour12: false })
-}
-
-/**
- * 将单个资产映射为预览数据（按类型放入对应槽位）。
- */
-export function assetToPreviewData(asset: DecorationAsset): PreviewData {
-  const url = asset.spec.asset?.url
-  switch (asset.spec.type) {
-    case 'badge':
-      return { primaryBadgeUrl: url, badgeShowcaseUrls: url ? [url] : [] }
-    case 'avatar_frame':
-      return { avatarFrameUrl: url }
-    case 'card_background':
-      return { cardBackgroundUrl: url }
-    case 'title':
-      return {
-        titleMode: asset.spec.payload?.titleMode,
-        titleImageUrl: url,
-        titleText: asset.spec.payload?.titleText,
-        titleColor: asset.spec.payload?.titleColor,
-        titleBackground: asset.spec.payload?.titleBackground,
-        titleBackgroundSecondary: asset.spec.payload?.titleBackgroundSecondary,
-      }
-    case 'name_style':
-      return { nameStyle: asset.spec.payload?.nameStyle }
-    default:
-      return {}
-  }
 }

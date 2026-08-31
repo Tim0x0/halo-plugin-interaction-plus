@@ -43,9 +43,7 @@ const { items, total, page, size, loading, error, load, search, onPaginationChan
 const selectedMap = ref(new Map<string, DecorationAsset>())
 
 onMounted(() => {
-  selectedMap.value = new Map(
-    (props.selected ?? []).map((asset) => [asset.metadata.name, asset]),
-  )
+  selectedMap.value = new Map((props.selected ?? []).map((asset) => [asset.metadata.name, asset]))
   load()
 })
 
@@ -86,7 +84,11 @@ function handleConfirm() {
     <div class="hip-select__list">
       <ListSkeleton v-if="loading" variant="grid" :count="8" />
       <ListError v-else-if="error" title="装饰加载失败" @retry="load" />
-      <VEmpty v-else-if="!items.length" title="暂无可授予的装饰" message="只有启用状态的装饰可授予" />
+      <VEmpty
+        v-else-if="!items.length"
+        title="暂无可授予的装饰"
+        message="只有启用状态的装饰可授予"
+      />
       <div v-else class="hip-select__grid">
         <button
           v-for="asset in items"
@@ -143,8 +145,8 @@ function handleConfirm() {
   margin-bottom: var(--hip-gap-md);
   flex-wrap: wrap;
 }
+/* 固定高度滚动区：骨架屏 / 空态 / 列表都在同一高度内，加载完成不改变弹窗高度，消除闪动 */
 .hip-select__list {
-  /* 固定高度滚动区：骨架屏 / 空态 / 列表都在同一高度内，加载完成不改变弹窗高度，消除闪动 */
   height: 44vh;
   overflow-y: auto;
 }
@@ -161,7 +163,9 @@ function handleConfirm() {
   cursor: pointer;
   text-align: center;
   overflow: hidden;
-  transition: border-color var(--hip-transition), box-shadow var(--hip-transition);
+  transition:
+    border-color var(--hip-transition),
+    box-shadow var(--hip-transition);
 }
 .hip-select__card:hover {
   box-shadow: var(--hip-shadow-hover);

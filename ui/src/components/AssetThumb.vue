@@ -1,7 +1,7 @@
 <script lang="ts" setup>
-// 装饰缩略展示：文字牌称号 / 昵称样式没有素材图，必须渲染真实效果——
-// 称号 = 文本 + 前景 / 背景色；昵称样式 = 示例字 + 纯色 / 渐变；
-// 整图称号（titleMode=image）与其他图片类型统一走素材图分支。
+// 装饰缩略展示：没有素材图的装饰必须渲染真实效果——
+// 称号 = 名称文字 + 前景 / 背景色；昵称样式 = 示例字 + 纯色 / 渐变；
+// 称号配了图（可选增强）则与其他图片类型统一走素材图分支，图挂了退回文字牌。
 // 资产网格、行列表、我的装扮、投稿列表、装饰选择弹窗统一复用。
 import { computed, ref, watch } from 'vue'
 import type { AssetPayload, AssetRef, DecorationTypeValue } from '@/types'
@@ -41,9 +41,9 @@ const fallbackLabel = computed(
 
 <template>
   <div class="hip-thumb" :class="`hip-thumb--${size}`">
-    <!-- 文字牌称号：渲染真实前景 / 背景色（整图称号走下方素材图分支） -->
+    <!-- 称号文字牌：没配图、或图挂了都走这里（对齐 runtime「加载失败 = 回落文字牌」） -->
     <span
-      v-if="type === 'title' && payload?.titleMode !== 'image' && payload?.titleText"
+      v-if="type === 'title' && (!imageUrl || broken) && payload?.titleText"
       class="hip-thumb__title"
       :style="titleStyle"
     >

@@ -6,6 +6,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.timxs.interactionplus.decoration.service.BootstrapService;
+import com.timxs.interactionplus.template.extension.CustomTemplate;
+import com.timxs.interactionplus.template.service.CustomTemplateService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -27,21 +29,28 @@ class InteractionPlusPluginTest {
     @Mock
     BootstrapService bootstrapService;
 
+    @Mock
+    CustomTemplateService customTemplateService;
+
     @InjectMocks
     InteractionPlusPlugin plugin;
 
     @Test
     void startShouldRegisterSchemesAndBootstrap() {
         when(bootstrapService.initializeDefaults()).thenReturn(Mono.empty());
+        when(customTemplateService.ensureDefaults()).thenReturn(Mono.empty());
 
         plugin.start();
 
-        // 7 个自定义资源全部注册
+        // 7 个带索引的自定义资源走双参重载
         verify(schemeManager, times(7)).register(any(), any());
+        // CustomTemplate 按主键直取、不建业务索引，走单参重载
+        verify(schemeManager).register(CustomTemplate.class);
         verify(bootstrapService).initializeDefaults();
+        verify(customTemplateService).ensureDefaults();
 
         plugin.stop();
-        // 7 个自定义资源全部注销
-        verify(schemeManager, times(7)).unregister(any());
+        // 8 个自定义资源全部注销
+        verify(schemeManager, times(8)).unregister(any());
     }
 }

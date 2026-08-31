@@ -45,9 +45,7 @@ export interface NameStyle {
 }
 
 export interface AssetPayload {
-  /** 称号形态：text=文字牌（默认），image=整图（素材引用） */
-  titleMode?: 'text' | 'image'
-  /** 称号文本；image 形态下作为替代文本与加载失败回落 */
+  /** 称号名称；行内场景展示它，同时是称号图的替代文本与加载失败兜底 */
   titleText?: string
   titleColor?: string
   titleBackground?: string
@@ -214,10 +212,17 @@ export interface GrantResult {
 
 // ── 身份标识 ──────────────────────────────────────────
 
+/** 身份标识展示形态：文字牌用 color，图标用 icon，图片用 image。缺省按哪个字段非空推断 */
+export type IdentityMarkMode = 'text' | 'icon' | 'image'
+
 export interface IdentityMarkMappingSpec {
   roleName: string
   displayName: string
+  displayMode?: IdentityMarkMode
+  /** 图标库字形（data URL） */
   icon?: string
+  /** 上传图地址（附件） */
+  image?: string
   color?: string
   priority?: number
   enabled?: boolean
@@ -238,10 +243,41 @@ export interface IdentityMarkMappingView {
 export interface IdentityMarkMappingParam {
   roleName?: string
   displayName: string
-  icon?: string
-  color?: string
+  displayMode?: IdentityMarkMode
+  /**
+   * 三种形态各占独立字段（icon / image / color），可并存、互不覆盖 ——
+   * 读出口按形态挑一个输出，切换形态无需再抹另一侧的值；仅在确实要清空时传 null。
+   */
+  icon?: string | null
+  image?: string | null
+  color?: string | null
   priority?: number
   enabled?: boolean
+}
+
+// ── Console：自定义模板 ──────────────────────────────
+
+/** 可自定义模板的前台组件，与 hip-* 一一对应；也是 metadata.name */
+export type TemplateComponent = 'identity' | 'avatar' | 'card'
+
+export interface CustomTemplateSpec {
+  component: TemplateComponent
+  enabled?: boolean
+  /** HTML 片段，可含 <script> */
+  html?: string
+  /** 纯 CSS，渲染时由 runtime 包 <style> */
+  css?: string
+}
+
+export interface CustomTemplate {
+  metadata: Metadata
+  spec: CustomTemplateSpec
+}
+
+export interface CustomTemplateParam {
+  enabled?: boolean
+  html?: string
+  css?: string
 }
 
 // ── UC ──────────────────────────────────────────────
@@ -280,7 +316,7 @@ export interface ProfileView {
   nameStyle?: string
   invalidItems: InvalidEquipItem[]
   /** 当前生效的身份标识（只读展示，按角色映射） */
-  identityMarks?: PreviewIdentityMark[]
+  identityMarks?: IdentityMark[]
   /** 是否公开展示「我的装扮墙」 */
   publicDecorationsVisible?: boolean
 }
@@ -294,47 +330,117 @@ export interface ProfileSaveParam {
   nameStyle?: string
 }
 
-// ── 装饰预览 ──────────────────────────────────────────
+// ── 公开身份（与 runtime/src/identity.ts 同构，预览直喂 renderPreview） ──
 
-/** 预览场景标识。 */
-export type PreviewScene = 'identity_line' | 'user_card'
-
-export interface PreviewIdentityMark {
+export interface IdentityMark {
   displayName: string
+  /** 图标 data URL（Iconify 字形）或图片地址；与 color 互斥（非空时 color 恒为空） */
   icon?: string
+  /** 文字牌颜色；与 icon 互斥（非空时 icon 恒为空） */
   color?: string
+  priority?: number
 }
 
-/** 预览卡片数据行的单个统计项（已格式化的展示文本）。 */
-export interface PreviewStatItem {
-  label: string
-  value: string
-}
-
-/** 预览数据（DecorationPreview 组件入参）。 */
-export interface PreviewData {
+/** 装饰快照：一件已佩戴装饰在公开接口里的形态。 */
+export interface DecorationVo {
+  assetName: string
+  type: string
   displayName?: string
-  avatar?: string
-  /** 用户公开简介（卡片区域展示） */
-  bio?: string
-  avatarFrameUrl?: string
-  /** 称号形态：text=文字牌（默认），image=整图 */
-  titleMode?: 'text' | 'image'
-  /** 整图称号的图片地址（titleMode=image 时渲染） */
-  titleImageUrl?: string
+  url?: string
+  mediaType?: string
+  /** 称号名称；行内场景展示它，同时是称号图的替代文本与加载失败兜底 */
   titleText?: string
   titleColor?: string
   titleBackground?: string
   titleBackgroundSecondary?: string
-  primaryBadgeUrl?: string
-  badgeShowcaseUrls?: string[]
-  cardBackgroundUrl?: string
   nameStyle?: NameStyle
-  identityMarks?: PreviewIdentityMark[]
-  /** 卡片数据行统计项（UC 传真实值；不传时组件用示例值，如 Console 素材预览） */
-  stats?: PreviewStatItem[]
-  /** 勋章总数（展柜「+N」计数；不传用示例值） */
-  badgeTotal?: number
-  /** 注册时间 ISO（「加入时间」行；不传用示例文案） */
+  rarityName?: string
+  rarityDisplayName?: string
+  rarityColor?: string
+  grantedAt?: string
+  expiresAt?: string
+}
+
+/** 外部插件贡献的统计项。 */
+export interface ContributedStat {
+  source: string
+  key: string
+  label: string
+  value: string
+}
+
+export interface IdentityStats {
+  posts: number
+  comments: number
+  /** 装扮计数；null/缺省 = 用户关闭公开装扮墙（不可用） */
+  decorations?: {
+    total: number
+    badge: number
+    avatarFrame: number
+    title: number
+    nameStyle: number
+    cardBackground: number
+  } | null
+  extras: ContributedStat[]
+}
+
+export interface PublicIdentity {
+  userName: string
+  displayName: string
+  avatar?: string
+  bio?: string
+  /** 注册时间（ISO 字符串），卡片展示「加入时间」 */
   registeredAt?: string
+  identityMarks: IdentityMark[]
+  decorations: {
+    avatarFrame?: DecorationVo
+    title?: DecorationVo
+    primaryBadge?: DecorationVo
+    badgeShowcase: DecorationVo[]
+    cardBackground?: DecorationVo
+    nameStyle?: DecorationVo
+  }
+  /** 互动统计；预览骨架数据可省略，消费方需判空。 */
+  stats?: IdentityStats
+  display: DisplayConfig
+}
+
+/** 身份行场景（hip-user-identity） */
+export interface IdentityLineDisplay {
+  showTitle: boolean
+  showPrimaryBadge: boolean
+  showNameStyle: boolean
+  showIdentityMarks: boolean
+  identityLimit: number
+}
+
+/** 头像场景（hip-user-avatar） */
+export interface AvatarDisplay {
+  showFrame: boolean
+}
+
+/** 用户卡场景（hip-user-card） */
+export interface UserCardDisplay {
+  showTitle: boolean
+  showPrimaryBadge: boolean
+  showShowcase: boolean
+  showNameStyle: boolean
+  showIdentityMarks: boolean
+  showAvatarFrame: boolean
+  showCardBackground: boolean
+  showcaseBadgeLimit: number
+  identityLimit: number
+}
+
+export interface DisplayConfig {
+  identityLine: IdentityLineDisplay
+  avatar: AvatarDisplay
+  userCard: UserCardDisplay
+  /** 昵称 / 用户卡头像跳转链接模板（{name} = 用户名）；空表示不跳转 */
+  userCardLinkTemplate?: string
+  /**
+   * 无头像占位风格：halo 灰底首字母；hash 按显示名着色。
+   * 只作用于内置 renderAvatar 占位；缺省按 halo。
+   */
+  avatarFallbackStyle?: 'halo' | 'hash'
 }

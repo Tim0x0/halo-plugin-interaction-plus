@@ -21,8 +21,8 @@ import run.halo.app.extension.ReactiveExtensionClient;
 /**
  * 插件引导：首次启动时创建默认稀有度。
  *
- * <p>使用独立标记 ConfigMap 记录初始化状态，保证幂等且尊重用户后续删除：
- * 用户删除默认稀有度后，重启 / 重载不会重复创建。
+ * <p>使用独立标记 ConfigMap 记录初始化状态，默认稀有度只创建一次；
+ * 用户主动删除后，重启 / 重载不会重复创建。
  */
 @Slf4j
 @Component

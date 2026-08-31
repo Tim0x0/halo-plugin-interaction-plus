@@ -46,7 +46,7 @@ const tabItems = (Object.keys(KIND_CONFIG) as MetadataKind[]).map((kind) => ({
 }))
 
 // 配置类数据全量加载（不分页），便于拖拽排序；
-// 加载状态机（乱序守卫防 Tab 快速切换 F1/F2、loading / error）复用 useListQuery
+// 加载状态机（乱序守卫防 Tab 快速切换、loading / error）复用 useListQuery
 const { items, loading, error, load } = useListQuery<DecorationMetadata>(() =>
   apis[activeKind.value].list({ page: 1, size: 200 }),
 )
@@ -104,7 +104,7 @@ async function cancelOrder() {
   await load()
 }
 
-// ── 编辑弹窗（不再暴露排序值输入） ──────────────────────
+// ── 编辑弹窗（排序由列表拖拽管理） ──────────────────────
 
 const editVisible = ref(false)
 const editing = ref<DecorationMetadata | undefined>()
@@ -270,76 +270,102 @@ onMounted(load)
         :title="`暂无${kindLabel}`"
         :message="`点击右上角新建${kindLabel}`"
       />
-      <table v-else class="hip-table hip-table--auto">
-        <thead>
-          <tr>
-            <th class="hip-td-fit"></th>
-            <th v-if="hasColor" class="hip-td-fit">预览</th>
-            <th>名称 / 描述</th>
-            <th v-if="hasColor" class="hip-td-fit">颜色</th>
-            <th class="hip-td-fit">状态</th>
-            <th class="hip-td-fit"></th>
-          </tr>
-        </thead>
-        <VueDraggable
-          v-model="items"
-          tag="tbody"
-          handle=".hip-drag-handle"
-          :animation="150"
-          @end="onDragEnd"
+      <div
+        v-else
+        class="hip-table-scroll"
+        role="region"
+        :aria-label="`${kindLabel}列表，可横向滚动查看完整信息`"
+        tabindex="0"
+      >
+        <table
+          class="hip-table hip-metadata-table"
+          :class="{ 'hip-metadata-table--colored': hasColor }"
         >
-          <tr v-for="item in items" :key="item.metadata.name">
-            <td class="hip-td-fit">
-              <span class="hip-drag-handle" title="拖拽排序">⠿</span>
-            </td>
-            <td v-if="hasColor" class="hip-td-fit">
-              <span
-                class="hip-meta-chip"
-                :style="item.spec.color
-                  ? { borderColor: item.spec.color, color: item.spec.color }
-                  : undefined"
-              >
-                {{ item.spec.displayName }}
-              </span>
-            </td>
-            <td>
-              <div class="hip-table__main">
-                <span class="hip-table__title">
-                  <span class="hip-table__title-text" :title="item.spec.displayName">
-                    {{ item.spec.displayName }}
+          <colgroup>
+            <col class="hip-metadata-table__col--drag" />
+            <col v-if="hasColor" class="hip-metadata-table__col--preview" />
+            <col class="hip-metadata-table__col--main" />
+            <col v-if="hasColor" class="hip-metadata-table__col--color" />
+            <col class="hip-metadata-table__col--status" />
+            <col class="hip-metadata-table__col--actions" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="hip-table__sticky-start" aria-label="拖拽排序"></th>
+              <th v-if="hasColor">预览</th>
+              <th>名称 / 描述</th>
+              <th v-if="hasColor">颜色</th>
+              <th>状态</th>
+              <th class="hip-table__sticky-end" aria-label="操作"></th>
+            </tr>
+          </thead>
+          <VueDraggable
+            v-model="items"
+            tag="tbody"
+            handle=".hip-drag-handle"
+            :animation="150"
+            @end="onDragEnd"
+          >
+            <tr v-for="item in items" :key="item.metadata.name">
+              <td class="hip-table__sticky-start hip-metadata-table__drag">
+                <span class="hip-drag-handle" title="拖拽排序">⠿</span>
+              </td>
+              <td v-if="hasColor">
+                <span
+                  class="hip-meta-chip"
+                  :title="item.spec.displayName"
+                  :style="
+                    item.spec.color
+                      ? { borderColor: item.spec.color, color: item.spec.color }
+                      : undefined
+                  "
+                >
+                  {{ item.spec.displayName }}
+                </span>
+              </td>
+              <td>
+                <div class="hip-table__main">
+                  <span class="hip-table__title">
+                    <span class="hip-table__title-text" :title="item.spec.displayName">
+                      {{ item.spec.displayName }}
+                    </span>
                   </span>
-                </span>
-                <span v-if="item.spec.description" class="hip-table__desc" :title="item.spec.description">
-                  {{ item.spec.description }}
-                </span>
-              </div>
-            </td>
-            <td v-if="hasColor" class="hip-td-fit">
-              <template v-if="item.spec.color">
-                <span class="hip-color">
-                  <span class="hip-color-dot" :style="{ background: item.spec.color }"></span>
-                  <span class="hip-color-value">{{ item.spec.color }}</span>
-                </span>
-              </template>
-            </td>
-            <td class="hip-td-fit">
-              <VStatusDot
-                :state="item.spec.enabled === false ? 'warning' : 'success'"
-                :text="item.spec.enabled === false ? '已停用' : '已启用'"
-              />
-            </td>
-            <td class="hip-td-fit">
-              <RowActions>
-                <VDropdownItem @click="openEdit(item)">编辑</VDropdownItem>
-                <VDropdownItem @click="toggleEnabled(item)">
-                  {{ item.spec.enabled === false ? '启用' : '停用' }}
-                </VDropdownItem>
-                <VDropdownItem type="danger" @click="handleDelete(item)">删除</VDropdownItem>
-              </RowActions>
-            </td>
-          </tr>
-        </VueDraggable>
-      </table>
+                  <span
+                    v-if="item.spec.description"
+                    class="hip-table__desc"
+                    :title="item.spec.description"
+                  >
+                    {{ item.spec.description }}
+                  </span>
+                </div>
+              </td>
+              <td v-if="hasColor">
+                <template v-if="item.spec.color">
+                  <span class="hip-color">
+                    <span class="hip-color-dot" :style="{ background: item.spec.color }"></span>
+                    <span class="hip-color-value">{{ item.spec.color }}</span>
+                  </span>
+                </template>
+              </td>
+              <td>
+                <VStatusDot
+                  :state="item.spec.enabled === false ? 'warning' : 'success'"
+                  :text="item.spec.enabled === false ? '已停用' : '已启用'"
+                />
+              </td>
+              <td class="hip-table__sticky-end hip-metadata-table__actions">
+                <RowActions>
+                  <VDropdownItem @click="openEdit(item)">编辑</VDropdownItem>
+                  <VDropdownItem @click="toggleEnabled(item)">
+                    {{ item.spec.enabled === false ? '启用' : '停用' }}
+                  </VDropdownItem>
+                  <VDropdownItem type="danger" @click="handleDelete(item)">删除</VDropdownItem>
+                </RowActions>
+              </td>
+            </tr>
+          </VueDraggable>
+        </table>
+      </div>
     </VCard>
 
     <VModal
@@ -347,12 +373,25 @@ onMounted(load)
       ref="modal"
       :title="editing ? `编辑${kindLabel}` : `新建${kindLabel}`"
       :width="520"
+      mount-to-body
       @close="editVisible = false"
     >
       <FormKit ref="formRef" type="form" :actions="false" @submit="handleSave">
-        <FormKit v-model="formState.displayName" type="text" label="显示名称" validation="required" />
+        <FormKit
+          v-model="formState.displayName"
+          type="text"
+          label="显示名称"
+          validation="required"
+        />
         <FormKit v-model="formState.description" type="textarea" label="描述" :auto-height="true" />
-        <FormKit v-if="hasColor" v-model="formState.color" type="color" label="颜色" />
+        <FormKit
+          v-if="hasColor"
+          v-model="formState.color"
+          type="color"
+          format="hex8"
+          label="颜色"
+          help="不选则无专属色；可拉透明度"
+        />
         <FormKit
           v-if="activeKind === 'rarities'"
           v-model="formState.externalGrantable"
@@ -404,6 +443,45 @@ onMounted(load)
   align-items: center;
   gap: var(--hip-gap-sm);
 }
+
+/* 分类表比带颜色的标签 / 稀有度表少两列，分别设置最小宽度，避免手机端无谓滚动。 */
+.hip-metadata-table {
+  min-width: 600px;
+  table-layout: fixed;
+}
+.hip-metadata-table--colored {
+  min-width: 820px;
+}
+.hip-metadata-table__col--drag {
+  width: 44px;
+}
+.hip-metadata-table__col--preview {
+  width: 176px;
+}
+.hip-metadata-table__col--color {
+  width: 144px;
+}
+.hip-metadata-table__col--status {
+  width: 96px;
+}
+.hip-metadata-table__col--actions {
+  width: 48px;
+}
+.hip-metadata-table tbody tr,
+.hip-metadata-table td {
+  height: 60px;
+}
+.hip-metadata-table .hip-table__main,
+.hip-metadata-table .hip-table__title,
+.hip-metadata-table .hip-table__title-text,
+.hip-metadata-table .hip-table__desc {
+  min-width: 0;
+  max-width: 100%;
+}
+.hip-metadata-table__drag,
+.hip-metadata-table__actions {
+  text-align: center;
+}
 .hip-drag-handle {
   cursor: grab;
   color: var(--hip-text-faint);
@@ -414,9 +492,13 @@ onMounted(load)
 .hip-drag-handle:active {
   cursor: grabbing;
 }
+/* inline-block + 列内截断：ellipsis 对 flex 化的匿名文本不生效，纯文本 chip 无需 flex。 */
 .hip-meta-chip {
-  display: inline-flex;
-  align-items: center;
+  box-sizing: border-box;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   border: 1px solid var(--hip-border);
   border-radius: var(--hip-radius-chip);
   padding: 2px 8px;

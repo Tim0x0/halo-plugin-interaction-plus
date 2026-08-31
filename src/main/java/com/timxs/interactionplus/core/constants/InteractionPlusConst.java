@@ -35,6 +35,10 @@ public final class InteractionPlusConst {
     /** 单个装饰最多标签数。 */
     public static final int ASSET_TAG_MAX = 5;
 
-    /** 颜色校验：3 或 6 位十六进制（对齐 Halo Tag.color 的 schema 约束）。 */
-    public static final String HEX_COLOR_PATTERN = "^#([a-fA-F0-9]{6}|[a-fA-F0-9]{3})$";
+    /**
+     * 颜色校验：3 / 6 / 8 位十六进制。
+     * 8 位是 {@code #RRGGBBAA}（Halo FormKit color 的 hex8），用来带透明度。
+     */
+    public static final String HEX_COLOR_PATTERN =
+        "^#([a-fA-F0-9]{8}|[a-fA-F0-9]{6}|[a-fA-F0-9]{3})$";
 }

@@ -7,9 +7,7 @@ metadata:
   name: interaction-plus
 spec:
   enabled: true
-  # 前端产物仅打包 ui/ 目录，依赖 Halo 2.25 的 prefer-plugin-ui-resources 行为。
-  # 安装/启动校验均按 toStableVersion() 比较，">=2.25.0" 在 2.25.0-beta.1 实例可通过；
-  # 不可写 ">=2.25.0-beta.1"（java-semver 范围表达式不支持预发布后缀，安装时报错）。
+  # UI 资源目录与构建配置要求 Halo 2.25 或更高版本。
   requires: ">=2.25.0"
   author:
     name: Tim0x0
@@ -19,7 +17,7 @@ spec:
   repo: https://github.com/Tim0x0/halo-plugin-interaction-plus
   issues: https://github.com/Tim0x0/halo-plugin-interaction-plus/issues
   displayName: "互动增强"
-  description: "为 Halo 提供用户装饰、身份标识和前台展示组件。"
+  description: "为站点增强社区互动：身份与装扮、前台展示，并开放给其他插件接入。"
   settingName: "interaction-plus-settings"
   configMapName: "interaction-plus-configmap"
   license:

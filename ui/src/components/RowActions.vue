@@ -25,8 +25,8 @@ const hasActions = () => !!slots.default
 </template>
 
 <style scoped>
+/* display: contents 不产生盒子，内部下拉 / 占位直接参与单元格布局 */
 .hip-row-actions-slot {
-  /* 不产生盒子，内部下拉/占位直接参与单元格布局，等效原多根渲染 */
   display: contents;
 }
 .hip-row-actions {

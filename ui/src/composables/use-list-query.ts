@@ -1,5 +1,5 @@
-// 列表查询 composable：统一消化审查报告 F2（乱序保护）、F3（分页双请求）、
-// F5（错误态与重试）、F11（删除当前页最后一条后回退页码）
+// 列表查询 composable：统一消化乱序保护、分页双请求、
+// 错误态与重试、删除当前页最后一条后回退页码
 import { ref, shallowRef } from 'vue'
 import type { ListResult } from '@/types'
 
@@ -17,7 +17,7 @@ export interface UseListQueryOptions {
  * 分页列表加载逻辑。
  *
  * - 模块级自增请求序号，仅最新请求的响应写入状态（防快速筛选 / 翻页乱序）。
- * - 失败时置 error 状态，由页面渲染错误态与重试入口；不再依赖拦截器静默。
+ * - 失败时置 error 状态，由页面渲染错误态与重试入口。
  * - 分页只消费 VPagination 的 `change` 事件（payload 含最终 page/size，单次 emit），
  *   避免 update:page / update:size 连发导致的双请求与脏请求。
  */
@@ -43,7 +43,7 @@ export function useListQuery<T>(
       if (seq !== requestSeq) return
       items.value = result.items
       total.value = result.total
-    } catch (e) {
+    } catch {
       if (seq !== requestSeq) return
       error.value = true
     } finally {

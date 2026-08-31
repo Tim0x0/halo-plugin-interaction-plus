@@ -1,5 +1,7 @@
 import { axiosInstance } from '@halo-dev/api-client'
 import type {
+  CustomTemplate,
+  CustomTemplateParam,
   DecorationAsset,
   DecorationAssetParam,
   DecorationGrant,
@@ -143,6 +145,19 @@ export const identityMarkApi = {
   remove: (name: string) => axiosInstance.delete(`${CONSOLE_BASE}/identity-mark-mappings/${name}`),
 }
 
+// ── Console：自定义模板 ────────────────────────────────
+
+export const customTemplateApi = {
+  /** 三条固定记录（identity / avatar / card），含未启用 */
+  list: () =>
+    axiosInstance.get<CustomTemplate[]>(`${CONSOLE_BASE}/custom-templates`).then((res) => res.data),
+  /** 按组件保存；无创建 / 删除接口，三条是固定槽位 */
+  save: (component: string, param: CustomTemplateParam) =>
+    axiosInstance
+      .put<CustomTemplate>(`${CONSOLE_BASE}/custom-templates/${component}`, param)
+      .then((res) => res.data),
+}
+
 // ── UC ────────────────────────────────────────────────
 
 export const ucApi = {
@@ -161,9 +176,7 @@ export const ucApi = {
       .get<ListResult<DecorationAsset>>(`${UC_BASE}/submissions`, { params })
       .then((res) => res.data),
   createSubmission: (param: DecorationAssetParam) =>
-    axiosInstance
-      .post<DecorationAsset>(`${UC_BASE}/submissions`, param)
-      .then((res) => res.data),
+    axiosInstance.post<DecorationAsset>(`${UC_BASE}/submissions`, param).then((res) => res.data),
   updateSubmission: (name: string, param: DecorationAssetParam) =>
     axiosInstance
       .put<DecorationAsset>(`${UC_BASE}/submissions/${name}`, param)

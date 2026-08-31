@@ -146,7 +146,7 @@ public class InteractionPlusNotificationService {
         return client.fetch(Subscription.class, name)
             .switchIfEmpty(Mono.defer(() -> createSubscription(name, reasonType, userName)))
             .onErrorResume(error -> {
-                // 并发重复创建（已存在）或其它异常都不应阻断后续通知发送
+                // 并发重复创建（已存在）或其他异常都不应阻断本次通知发送。
                 log.warn("确保通知订阅失败：reasonType={}, user={}", reasonType, userName, error);
                 return Mono.empty();
             })

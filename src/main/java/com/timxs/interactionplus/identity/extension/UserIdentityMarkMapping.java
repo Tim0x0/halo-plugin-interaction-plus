@@ -37,10 +37,19 @@ public class UserIdentityMarkMapping extends AbstractExtension {
             description = "身份标识显示名称")
         private String displayName;
 
-        @Schema(description = "图标地址或图标标识")
+        @Schema(allowableValues = {"text", "icon", "image"},
+            description = "展示形态：text=文字牌（用 color），icon=图标库字形（用 icon），"
+                + "image=上传图（用 image）。缺省时按哪个字段非空推断")
+        private String displayMode;
+
+        @Schema(description = "图标库字形（data URL；颜色只在 Iconify 选择器里写入 SVG）")
         private String icon;
 
-        @Schema(pattern = HEX_COLOR_PATTERN, description = "标识颜色")
+        @Schema(description = "上传图地址（附件）")
+        private String image;
+
+        @Schema(pattern = HEX_COLOR_PATTERN,
+            description = "文字牌颜色（仅 text 形态生效；#RGB / #RRGGBB / #RRGGBBAA，空=模板默认铬件）")
         private String color;
 
         @Schema(description = "优先级，越大越靠前")

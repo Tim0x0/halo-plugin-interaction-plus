@@ -7,7 +7,7 @@ import run.halo.app.extension.ExtensionClient;
 
 /**
  * 装饰标签删除级联清理：从引用资产的 {@code spec.tagNames} 移除该标签。
- * List.contains / remove 为精确比较，不受索引数组字段 equal 语义影响（B5）。
+ * List.contains / remove 为精确比较，不受索引数组字段 equal 语义影响。
  */
 @Component
 public class TagReconciler extends AbstractMetadataReconciler<UserDecorationTag> {

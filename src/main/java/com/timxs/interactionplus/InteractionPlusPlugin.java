@@ -7,9 +7,12 @@ import com.timxs.interactionplus.decoration.extension.UserDecorationProfile;
 import com.timxs.interactionplus.decoration.extension.UserDecorationRarity;
 import com.timxs.interactionplus.decoration.extension.UserDecorationTag;
 import com.timxs.interactionplus.identity.extension.UserIdentityMarkMapping;
+import com.timxs.interactionplus.template.extension.CustomTemplate;
+import com.timxs.interactionplus.template.service.CustomTemplateService;
 import com.timxs.interactionplus.decoration.service.BootstrapService;
 import java.time.Instant;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import run.halo.app.extension.Scheme;
 import run.halo.app.extension.SchemeManager;
@@ -25,19 +28,22 @@ import run.halo.app.plugin.PluginContext;
  * 在插件启动 / 停止时自动 setupWith+start / dispose，无需在此手动管理。
  *
  * @author Tim0x0
- * @since 0.1.0
+ * @since 1.0.0
  */
+@Slf4j
 @Component
 public class InteractionPlusPlugin extends BasePlugin {
 
     private final SchemeManager schemeManager;
     private final BootstrapService bootstrapService;
+    private final CustomTemplateService customTemplateService;
 
     public InteractionPlusPlugin(PluginContext pluginContext, SchemeManager schemeManager,
-        BootstrapService bootstrapService) {
+        BootstrapService bootstrapService, CustomTemplateService customTemplateService) {
         super(pluginContext);
         this.schemeManager = schemeManager;
         this.bootstrapService = bootstrapService;
+        this.customTemplateService = customTemplateService;
     }
 
     @Override
@@ -49,13 +55,12 @@ public class InteractionPlusPlugin extends BasePlugin {
         registerTag();
         registerRarity();
         registerIdentityMarkMapping();
-        // 级联清理 Reconciler 均为 @Component，由 Halo PluginControllerManager 在插件启动时
-        // 自动 setupWith+start、停止时 dispose，无需在此手动启停。
-        // 授予记录保留清理由 GrantRetentionService 的 @Scheduled 自动驱动
-        // （插件上下文经 InteractionPlusConfiguration 的 @EnableScheduling 开启）。
-        // 首次启动创建默认稀有度（幂等）。错误已由链上 doOnError 记录日志，
-        // 这里给空错误消费者兜底，避免无参 subscribe 触发 onErrorDropped 二次打印
+        registerCustomTemplate();
+        // 空错误消费者兜底，避免无参 subscribe 触发 onErrorDropped
         bootstrapService.initializeDefaults().subscribe(null, error -> { });
+        // 自定义模板三条固定记录（幂等，缺失即补建）
+        customTemplateService.ensureDefaults()
+            .subscribe(null, error -> log.error("初始化自定义模板记录失败", error));
     }
 
     @Override
@@ -67,6 +72,7 @@ public class InteractionPlusPlugin extends BasePlugin {
         schemeManager.unregister(Scheme.buildFromType(UserDecorationTag.class));
         schemeManager.unregister(Scheme.buildFromType(UserDecorationRarity.class));
         schemeManager.unregister(Scheme.buildFromType(UserIdentityMarkMapping.class));
+        schemeManager.unregister(Scheme.buildFromType(CustomTemplate.class));
     }
 
     private void registerAsset() {
@@ -189,5 +195,13 @@ public class InteractionPlusPlugin extends BasePlugin {
                     String.class)
                 .indexFunc(mapping -> mapping.getSpec().getDisplayName()));
         });
+    }
+
+    /**
+     * 自定义模板：固定三条记录，一律按 {@code metadata.name}（组件名）主键直取，
+     * 无列表查询与排序需求，故不建业务索引。
+     */
+    private void registerCustomTemplate() {
+        schemeManager.register(CustomTemplate.class);
     }
 }

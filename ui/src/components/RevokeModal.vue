@@ -37,8 +37,7 @@ onMounted(async () => {
       size: 100,
     })
     otherActive.value = result.items.filter(
-      (view) =>
-        view.status === 'active' && view.grant.metadata.name !== props.grant.metadata.name,
+      (view) => view.status === 'active' && view.grant.metadata.name !== props.grant.metadata.name,
     )
   } catch {
     // 查询失败不阻断撤销流程，仅缺一条并存提示

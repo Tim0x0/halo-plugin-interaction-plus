@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 // 授予装饰弹窗：指定用户授予 / 按角色快照授予
-// 装饰选择改为「同一弹窗内 v-if 切换」到 AssetSelectPanel（不再套第二个 VModal，
-// 嵌套弹窗会触发 insertBefore / emitsOptions=null 崩溃）；全部成功自动关闭，有跳过/失败保留明细
+// DecorationPicker 稳定挂载并在内部管理二级选择弹窗，避免在父 VModal 内容区顶层
+// 动态增删弹窗；全部成功自动关闭，有跳过/失败时保留明细。
 import { computed, reactive, ref } from 'vue'
 import { Toast, VAlert, VButton, VModal, VSpace } from '@halo-dev/components'
 import { grantApi } from '@/api'
@@ -50,9 +50,7 @@ const result = ref<GrantResult | null>(null)
 const resultAlertType = computed(() => {
   if (!result.value) return 'success'
   if (result.value.failedCount > 0) {
-    return result.value.successCount === 0 && result.value.renewedCount === 0
-      ? 'error'
-      : 'warning'
+    return result.value.successCount === 0 && result.value.renewedCount === 0 ? 'error' : 'warning'
   }
   return 'success'
 })
@@ -98,9 +96,7 @@ async function handleSubmit() {
   submitting.value = true
   try {
     const assetNames = selectedAssets.value.map((asset) => asset.metadata.name)
-    const expiresAt = formState.expiresAt
-      ? new Date(formState.expiresAt).toISOString()
-      : undefined
+    const expiresAt = formState.expiresAt ? new Date(formState.expiresAt).toISOString() : undefined
     const reason = formState.reason.trim() || undefined
     if (formState.grantMode === 'users') {
       result.value = await grantApi.grant({
@@ -174,7 +170,7 @@ async function handleSubmit() {
           type="roleSelect"
           label="角色"
           multiple
-          help="一次性快照授予当前拥有该角色的用户，后续角色变动不会自动调整"
+          help="一次性快照授予当前拥有该角色的用户；角色成员变化不会调整这次快照"
         />
         <FormKit
           v-model="formState.expiresAt"
@@ -204,7 +200,10 @@ async function handleSubmit() {
             <div v-if="result.failed.length">
               失败：{{
                 result.failed
-                  .map((item) => `${item.userDisplayName || item.userName}（${failureLabel(item.reason)}）`)
+                  .map(
+                    (item) =>
+                      `${item.userDisplayName || item.userName}（${failureLabel(item.reason)}）`,
+                  )
                   .join('、')
               }}
             </div>
@@ -215,9 +214,7 @@ async function handleSubmit() {
 
     <template #footer>
       <VSpace>
-        <VButton :loading="submitting" type="secondary" @click="submitForm">
-          执行授予
-        </VButton>
+        <VButton :loading="submitting" type="secondary" @click="submitForm"> 执行授予 </VButton>
         <VButton @click="modal?.close()">关闭</VButton>
       </VSpace>
     </template>

@@ -115,23 +115,23 @@ public class UserDecorationAsset extends AbstractExtension {
     }
 
     /**
-     * 类型扩展字段：称号文本、昵称颜色配置等。
+     * 类型扩展字段：称号名称、昵称颜色配置等。
      */
     @Data
     @Schema(name = "UserDecorationAssetPayload")
     public static class Payload {
 
-        @Schema(pattern = "^(text|image)$",
-            description = "称号形态（type=title）：text=文字牌（三色配置），image=整图（素材引用）")
-        private String titleMode;
-
-        @Schema(maxLength = 30, description = "称号文本（type=title）；image 形态下作为图片替代文本与加载失败回落")
+        @Schema(maxLength = 30,
+            description = "称号名称（type=title，必填）：行内场景（评论等）展示它，"
+                + "同时作为称号图片的替代文本与加载失败兜底")
         private String titleText;
 
-        @Schema(pattern = HEX_COLOR_PATTERN, description = "称号文字颜色（type=title，可选）")
+        @Schema(pattern = HEX_COLOR_PATTERN,
+            description = "称号文字颜色（type=title，可选；#RGB / #RRGGBB / #RRGGBBAA，空=继承）")
         private String titleColor;
 
-        @Schema(pattern = HEX_COLOR_PATTERN, description = "称号背景颜色（type=title，可选）")
+        @Schema(pattern = HEX_COLOR_PATTERN,
+            description = "称号背景颜色（type=title，可选；#RGB / #RRGGBB / #RRGGBBAA，空=无底）")
         private String titleBackground;
 
         @Schema(pattern = HEX_COLOR_PATTERN,

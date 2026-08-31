@@ -2,7 +2,7 @@
 // Console - 身份标识页：角色到身份标识映射管理
 // 排序为拖拽（priority 由拖拽写入，不暴露数字输入）；
 // 角色一律展示显示名；配置类数据全量加载，不分页
-import { onMounted, reactive, ref, watch } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import {
   Dialog,
   Toast,
@@ -22,7 +22,11 @@ import { useListQuery } from '@/composables/use-list-query'
 import RowActions from '@/components/RowActions.vue'
 import ListSkeleton from '@/components/ListSkeleton.vue'
 import ListError from '@/components/ListError.vue'
-import type { IdentityMarkMappingView } from '@/types'
+import type {
+  IdentityMarkMappingSpec,
+  IdentityMarkMappingView,
+  IdentityMarkMode as MarkMode,
+} from '@/types'
 
 // 配置类数据全量加载（角色数量级，不分页），便于拖拽排序；
 // 加载状态机（乱序守卫 / loading / error）复用 useListQuery
@@ -54,9 +58,13 @@ async function persistOrder() {
       .filter(({ view, priority }) => (view.mapping.spec.priority ?? 0) !== priority)
     for (const { view, priority } of updates) {
       const spec = view.mapping.spec
+      // 后端 applyParam 是全量覆盖，未带的字段会被写成 null——
+      // 这类「只改一个字段」的更新必须把其余字段原样回传
       await identityMarkApi.update(view.mapping.metadata.name, {
         displayName: spec.displayName,
+        displayMode: spec.displayMode,
         icon: spec.icon,
+        image: spec.image,
         color: spec.color,
         priority,
         enabled: spec.enabled,
@@ -80,7 +88,7 @@ async function cancelOrder() {
   await load()
 }
 
-// ── 编辑弹窗（不再暴露优先级输入） ──────────────────────
+// ── 编辑弹窗（优先级由列表拖拽管理） ──────────────────────
 
 const editVisible = ref(false)
 const editing = ref<IdentityMarkMappingView | undefined>()
@@ -91,84 +99,69 @@ const formRef = ref()
 const formState = reactive({
   roleName: '' as string | string[],
   displayName: '',
-  icon: '',
-  color: '#3b82f6',
+  // 三形态各占独立字段，切形态只换当前生效项
+  iconGlyph: '',
+  imageUrl: '',
+  color: '',
   enabled: true,
 })
 
-// 图标来源：图标库（Halo iconify 控件，format=dataurl 物化为自包含图片地址）/ 上传图片。
-// 两者写同一个 icon 字段，落库形态一致（均为 img src 可用的地址），消费端无感知
-const iconSource = ref<'iconify' | 'upload'>('iconify')
+/** 展示形态三选一：text / icon / image。 */
+const markMode = ref<MarkMode>('text')
 
-// 切换来源时清掉与新来源不匹配的旧值，避免图标库值出现在附件输入框（反之亦然）
-watch(iconSource, (source) => {
-  const isDataUrl = formState.icon.startsWith('data:')
-  if (source === 'iconify' && formState.icon && !isDataUrl) {
-    formState.icon = ''
-  } else if (source === 'upload' && isDataUrl) {
-    formState.icon = ''
+/** 归位展示形态：显式值优先，否则按字段非空推断。 */
+function resolveMarkMode(spec: IdentityMarkMappingSpec): MarkMode {
+  if (spec.displayMode) {
+    return spec.displayMode
   }
-})
+  if (spec.image) {
+    return 'image'
+  }
+  return spec.icon ? 'icon' : 'text'
+}
+
+/** 当前形态生效的图（icon → 图标库字形，image → 上传图）；文字形态为空。 */
+function markSource(spec: IdentityMarkMappingSpec): string | undefined {
+  const mode = resolveMarkMode(spec)
+  if (mode === 'icon') {
+    return spec.icon || undefined
+  }
+  return mode === 'image' ? spec.image || undefined : undefined
+}
+
+/** 该映射是否以图渲染（图标 / 图片形态且确有图）；否则渲染文字牌。 */
+function showsIcon(spec: IdentityMarkMappingSpec): boolean {
+  return !!markSource(spec)
+}
 
 function openCreate() {
   editing.value = undefined
   formState.roleName = ''
   formState.displayName = ''
-  formState.icon = ''
-  formState.color = '#3b82f6'
+  formState.iconGlyph = ''
+  formState.imageUrl = ''
+  formState.color = ''
   formState.enabled = true
-  iconSource.value = 'iconify'
+  markMode.value = 'text'
   editVisible.value = true
 }
 
 function openEdit(view: IdentityMarkMappingView) {
   editing.value = view
-  formState.roleName = view.mapping.spec.roleName
-  formState.displayName = view.mapping.spec.displayName
-  formState.icon = view.mapping.spec.icon || ''
-  formState.color = view.mapping.spec.color || '#3b82f6'
-  formState.enabled = view.mapping.spec.enabled !== false
-  // 既有值按形态归位来源：data URL 归图标库，其余（附件地址）归上传；空值默认图标库
-  iconSource.value = !formState.icon || formState.icon.startsWith('data:') ? 'iconify' : 'upload'
+  const spec = view.mapping.spec
+  formState.roleName = spec.roleName
+  formState.displayName = spec.displayName
+  // 三个字段各填各的，与当前选中形态无关——文字形态下图标 / 图片同样留着，切回去就在
+  formState.iconGlyph = spec.icon || ''
+  formState.imageUrl = spec.image || ''
+  formState.color = spec.color || ''
+  formState.enabled = spec.enabled !== false
+  markMode.value = resolveMarkMode(spec)
   editVisible.value = true
 }
 
 function submitForm() {
   formRef.value?.node?.submit?.()
-}
-
-/**
- * 「字形染色、图片原色」：图标库字形（data: 形态的 SVG）保存时把颜色写进
- * SVG 根节点的 color 属性——字形的 currentColor 由此取色，渲染层零改动；
- * 幂等（重复保存 / 改色重存都只重写根节点属性），上传图片与非 SVG 原样返回。
- */
-function tintGlyphIcon(icon: string, color: string): string {
-  if (!icon.startsWith('data:image/svg+xml') || !/^#[0-9a-fA-F]{3,8}$/.test(color)) {
-    return icon
-  }
-  const comma = icon.indexOf(',')
-  if (comma < 0) {
-    return icon
-  }
-  const header = icon.slice(0, comma + 1)
-  const isBase64 = header.includes(';base64')
-  let svg: string
-  try {
-    svg = isBase64 ? atob(icon.slice(comma + 1)) : decodeURIComponent(icon.slice(comma + 1))
-  } catch {
-    return icon
-  }
-  if (!svg.includes('<svg')) {
-    return icon
-  }
-  const tinted = svg
-    .replace(/(<svg[^>]*?)\s+color="[^"]*"/i, '$1')
-    .replace(/<svg/i, `<svg color="${color}"`)
-  try {
-    return header + (isBase64 ? btoa(tinted) : encodeURIComponent(tinted))
-  } catch {
-    return icon
-  }
 }
 
 async function handleSave() {
@@ -177,14 +170,23 @@ async function handleSave() {
     Toast.warning('请选择角色')
     return
   }
+  const mode = markMode.value
+  if (mode === 'icon' && !formState.iconGlyph) {
+    Toast.warning('请选择图标')
+    return
+  }
+  if (mode === 'image' && !formState.imageUrl) {
+    Toast.warning('请上传图片')
+    return
+  }
   saving.value = true
   try {
     const param = {
       roleName: roleName || undefined,
       displayName: formState.displayName.trim(),
-      icon: formState.icon
-        ? tintGlyphIcon(formState.icon, formState.color)
-        : undefined,
+      displayMode: mode,
+      icon: formState.iconGlyph || undefined,
+      image: formState.imageUrl || undefined,
       color: formState.color || undefined,
       // 新建排在最前（当前最大 + 1）；编辑保持原值
       priority: editing.value
@@ -221,7 +223,9 @@ async function toggleEnabled(view: IdentityMarkMappingView) {
   try {
     await identityMarkApi.update(name, {
       displayName: spec.displayName,
+      displayMode: spec.displayMode,
       icon: spec.icon,
+      image: spec.image,
       color: spec.color,
       priority: spec.priority,
       enabled: spec.enabled === false,
@@ -284,79 +288,103 @@ onMounted(load)
       <ListSkeleton v-if="loading" variant="list" />
       <ListError v-else-if="error" title="身份标识加载失败" @retry="load" />
       <VEmpty v-else-if="!items.length" title="暂无身份标识映射" message="点击右上角新建映射" />
-      <table v-else class="hip-table hip-table--auto">
-        <thead>
-          <tr>
-            <th class="hip-td-fit"></th>
-            <th class="hip-td-fit">预览</th>
-            <th>名称 / 角色</th>
-            <th class="hip-td-fit">状态</th>
-            <th class="hip-td-fit"></th>
-          </tr>
-        </thead>
-        <VueDraggable
-          v-model="items"
-          tag="tbody"
-          handle=".hip-drag-handle"
-          :animation="150"
-          @end="onDragEnd"
-        >
-          <tr v-for="view in items" :key="view.mapping.metadata.name">
-            <td class="hip-td-fit">
-              <span class="hip-drag-handle" title="拖拽排序">⠿</span>
-            </td>
-            <td class="hip-td-fit">
-              <!-- 有图标只显图标，无图标 / 图标加载失败显文字牌；统一尺寸不撑高行 -->
-              <img
-                v-if="view.mapping.spec.icon && !brokenIcons.has(view.mapping.spec.icon)"
-                class="hip-mark-icon"
-                :src="view.mapping.spec.icon"
-                :alt="view.mapping.spec.displayName"
-                :title="view.mapping.spec.displayName"
-                @error="brokenIcons.add(view.mapping.spec.icon)"
-              />
-              <span
-                v-else
-                class="hip-mark-preview"
-                :style="{ borderColor: view.mapping.spec.color, color: view.mapping.spec.color }"
-              >
-                {{ view.mapping.spec.displayName }}
-              </span>
-            </td>
-            <td>
-              <div class="hip-table__main">
-                <span class="hip-table__title">
-                  <span class="hip-table__title-text" :title="view.mapping.spec.displayName">
-                    {{ view.mapping.spec.displayName }}
-                  </span>
-                  <VTag v-if="!view.roleExists" theme="danger">角色不存在</VTag>
-                </span>
+      <div
+        v-else
+        class="hip-table-scroll"
+        role="region"
+        aria-label="身份标识列表，可横向滚动查看完整信息"
+        tabindex="0"
+      >
+        <table class="hip-table hip-identity-table">
+          <colgroup>
+            <col class="hip-identity-table__col--drag" />
+            <col class="hip-identity-table__col--preview" />
+            <col class="hip-identity-table__col--main" />
+            <col class="hip-identity-table__col--status" />
+            <col class="hip-identity-table__col--actions" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="hip-table__sticky-start" aria-label="拖拽排序"></th>
+              <th>预览</th>
+              <th>名称 / 角色</th>
+              <th>状态</th>
+              <th class="hip-table__sticky-end" aria-label="操作"></th>
+            </tr>
+          </thead>
+          <VueDraggable
+            v-model="items"
+            tag="tbody"
+            handle=".hip-drag-handle"
+            :animation="150"
+            @end="onDragEnd"
+          >
+            <tr v-for="view in items" :key="view.mapping.metadata.name">
+              <td class="hip-table__sticky-start hip-identity-table__drag">
+                <span class="hip-drag-handle" title="拖拽排序">⠿</span>
+              </td>
+              <td>
+                <!-- 按形态取图而非「哪个字段非空」：另外两个形态的值可能留着，
+                   与 runtime 一致的口径来自读出口（它按形态只下发其一）。
+                   裂图回落牌无色，对齐 runtime 的回落牌 -->
+                <img
+                  v-if="
+                    showsIcon(view.mapping.spec) && !brokenIcons.has(markSource(view.mapping.spec)!)
+                  "
+                  class="hip-mark-icon"
+                  :src="markSource(view.mapping.spec)"
+                  :alt="view.mapping.spec.displayName"
+                  :title="view.mapping.spec.displayName"
+                  @error="brokenIcons.add(markSource(view.mapping.spec)!)"
+                />
                 <span
-                  class="hip-table__desc"
-                  :title="`角色：${view.roleDisplayName ?? view.mapping.spec.roleName}`"
+                  v-else
+                  class="hip-mark-preview"
+                  :title="view.mapping.spec.displayName"
+                  :style="
+                    showsIcon(view.mapping.spec) || !view.mapping.spec.color
+                      ? {}
+                      : { borderColor: view.mapping.spec.color, color: view.mapping.spec.color }
+                  "
                 >
-                  角色：{{ view.roleDisplayName ?? view.mapping.spec.roleName }}
+                  {{ view.mapping.spec.displayName }}
                 </span>
-              </div>
-            </td>
-            <td class="hip-td-fit">
-              <VStatusDot
-                :state="view.mapping.spec.enabled === false ? 'warning' : 'success'"
-                :text="view.mapping.spec.enabled === false ? '已停用' : '已启用'"
-              />
-            </td>
-            <td class="hip-td-fit">
-              <RowActions>
-                <VDropdownItem @click="openEdit(view)">编辑</VDropdownItem>
-                <VDropdownItem @click="toggleEnabled(view)">
-                  {{ view.mapping.spec.enabled === false ? '启用' : '停用' }}
-                </VDropdownItem>
-                <VDropdownItem type="danger" @click="handleDelete(view)">删除</VDropdownItem>
-              </RowActions>
-            </td>
-          </tr>
-        </VueDraggable>
-      </table>
+              </td>
+              <td>
+                <div class="hip-table__main">
+                  <span class="hip-table__title">
+                    <span class="hip-table__title-text" :title="view.mapping.spec.displayName">
+                      {{ view.mapping.spec.displayName }}
+                    </span>
+                    <VTag v-if="!view.roleExists" theme="danger">角色不存在</VTag>
+                  </span>
+                  <span
+                    class="hip-table__desc"
+                    :title="`角色：${view.roleDisplayName ?? view.mapping.spec.roleName}`"
+                  >
+                    角色：{{ view.roleDisplayName ?? view.mapping.spec.roleName }}
+                  </span>
+                </div>
+              </td>
+              <td>
+                <VStatusDot
+                  :state="view.mapping.spec.enabled === false ? 'warning' : 'success'"
+                  :text="view.mapping.spec.enabled === false ? '已停用' : '已启用'"
+                />
+              </td>
+              <td class="hip-table__sticky-end hip-identity-table__actions">
+                <RowActions>
+                  <VDropdownItem @click="openEdit(view)">编辑</VDropdownItem>
+                  <VDropdownItem @click="toggleEnabled(view)">
+                    {{ view.mapping.spec.enabled === false ? '启用' : '停用' }}
+                  </VDropdownItem>
+                  <VDropdownItem type="danger" @click="handleDelete(view)">删除</VDropdownItem>
+                </RowActions>
+              </td>
+            </tr>
+          </VueDraggable>
+        </table>
+      </div>
     </VCard>
 
     <VModal
@@ -364,6 +392,7 @@ onMounted(load)
       ref="modal"
       :title="editing ? '编辑身份标识映射' : '新建身份标识映射'"
       :width="520"
+      mount-to-body
       @close="editVisible = false"
     >
       <FormKit ref="formRef" type="form" :actions="false" @submit="handleSave">
@@ -386,43 +415,47 @@ onMounted(load)
           type="text"
           label="身份名称"
           validation="required"
+          :help="
+            markMode === 'text'
+              ? '文字牌上显示的名称'
+              : '后台列表名；前台作图标/图片的悬停提示，加载失败时回落为文字'
+          "
         />
         <FormKit
-          v-model="iconSource"
+          v-model="markMode"
           type="radio"
-          label="图标来源"
+          label="展示形态"
           :options="[
-            { label: '图标库', value: 'iconify' },
-            { label: '上传图片', value: 'upload' },
+            { label: '文字', value: 'text' },
+            { label: '图标', value: 'icon' },
+            { label: '图片', value: 'image' },
           ]"
+          help="三选一：纯文字牌 / Iconify 小图标 / 上传小图；不与文字并排"
         />
         <FormKit
-          v-if="iconSource === 'iconify'"
-          v-model="formState.icon"
+          v-if="markMode === 'icon'"
+          v-model="formState.iconGlyph"
           type="iconify"
           label="图标"
           format="dataurl"
           :value-only="true"
-          help="从 Iconify 图标库选择，颜色由下方「颜色」字段统一控制（无需在选择器内单独设色）；选择时需联网，保存后自包含不再依赖外部服务"
+          help="从 Iconify 图标库选择；颜色在选择器里写入 SVG，前台按原样渲染"
         />
         <FormKit
-          v-else
-          v-model="formState.icon"
+          v-else-if="markMode === 'image'"
+          v-model="formState.imageUrl"
           type="attachment"
-          label="图标"
+          label="图片"
           :accepts="['image/*']"
+          help="身份标识展示的图片，建议使用小尺寸图片"
         />
         <FormKit
+          v-if="markMode === 'text'"
           v-model="formState.color"
           type="color"
+          format="hex8"
           label="颜色"
-          :help="
-            iconSource === 'iconify' && formState.icon
-              ? '图标库字形保存时按此颜色着色；同时用于图标加载失败时的文字回落牌'
-              : formState.icon
-                ? '上传图片保持原有色彩不染色；此颜色仅在图标加载失败、回落为文字牌时生效'
-                : '文字牌（无图标时的展示形态）的边框与文字颜色'
-          "
+          help="文字牌的边框与文字颜色；不选则用模板默认铬件，可拉透明度"
         />
         <FormKit v-model="formState.enabled" type="switch" label="启用" />
       </FormKit>
@@ -468,6 +501,39 @@ onMounted(load)
   align-items: center;
   gap: var(--hip-gap-sm);
 }
+
+/* 预览列有固定展示面积，名称 / 角色列负责吸收剩余空间。 */
+.hip-identity-table {
+  min-width: 760px;
+  table-layout: fixed;
+}
+.hip-identity-table__col--drag {
+  width: 44px;
+}
+.hip-identity-table__col--preview {
+  width: 176px;
+}
+.hip-identity-table__col--status {
+  width: 96px;
+}
+.hip-identity-table__col--actions {
+  width: 48px;
+}
+.hip-identity-table tbody tr,
+.hip-identity-table td {
+  height: 60px;
+}
+.hip-identity-table .hip-table__main,
+.hip-identity-table .hip-table__title,
+.hip-identity-table .hip-table__title-text,
+.hip-identity-table .hip-table__desc {
+  min-width: 0;
+  max-width: 100%;
+}
+.hip-identity-table__drag,
+.hip-identity-table__actions {
+  text-align: center;
+}
 .hip-drag-handle {
   cursor: grab;
   color: var(--hip-text-faint);
@@ -478,10 +544,13 @@ onMounted(load)
 .hip-drag-handle:active {
   cursor: grabbing;
 }
+/* inline-block + 列内截断：ellipsis 对 flex 化的匿名文本不生效，纯文本牌无需 flex。 */
 .hip-mark-preview {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  box-sizing: border-box;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   border: 1px solid var(--hip-border);
   border-radius: 3px;
   padding: 2px 6px;

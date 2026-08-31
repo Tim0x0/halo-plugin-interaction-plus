@@ -12,7 +12,7 @@ repositories {
 }
 
 dependencies {
-    // Halo 2.25.0 正式版构件已发布 Maven Central（2026-06-12 升级，确认稿 §37.1 升级清单）
+    // Halo API 与插件开发平台基线。
     implementation platform('run.halo.tools.platform:plugin:2.25.0')
     compileOnly 'run.halo.app:api'
 
@@ -40,7 +40,7 @@ tasks.withType(JavaCompile).configureEach {
     options.compilerArgs << '-Xlint:deprecation'
 }
 
-// Halo 2.25 起插件前端资源默认从 resources/ui 读取，不再输出到旧的 console 目录
+// Console / UC 前端资源按 plugin.yaml 的 Halo 要求打包到 resources/ui。
 tasks.register('processUiResources', Copy) {
     from project(':ui').layout.buildDirectory.dir('dist')
     into layout.buildDirectory.dir('resources/main/ui')
@@ -53,7 +53,7 @@ tasks.named('classes') {
 }
 
 // 前台 Runtime 产物输出到插件静态资源目录：
-// /plugins/interaction-plus/assets/runtime/interaction-plus.runtime.js|css
+// /plugins/interaction-plus/assets/runtime/interaction-plus.runtime.js
 tasks.register('processRuntimeResources', Copy) {
     from project(':runtime').layout.buildDirectory.dir('dist')
     into layout.buildDirectory.dir('resources/main/assets/runtime')
@@ -72,4 +72,3 @@ tasks.named('generatePluginComponentsIdx') {
 halo {
     version = '2.25.0'
 }
-

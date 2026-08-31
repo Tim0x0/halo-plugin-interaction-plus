@@ -21,6 +21,7 @@ import com.timxs.interactionplus.identity.service.PublicIdentityService;
 import com.timxs.interactionplus.identity.support.PublicIdentityCache;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,7 +61,7 @@ public class DecorationProfileService {
     // ───────────────────────── 库存 ─────────────────────────
 
     /**
-     * 我的装饰库存。基于授予记录列出，标记可用 / 已过期 / 已撤销 / 已停用。
+     * 我的装饰库存。基于授予记录列出，标记可用 / 已过期 / 已撤销 / 已下架。
      */
     public Flux<InventoryItem> getInventory(String userName) {
         var now = Instant.now();
@@ -93,10 +94,12 @@ public class DecorationProfileService {
     /**
      * 将同一装饰的多条授予聚合为一个库存项。
      *
-     * <p>状态取最优：资产可用且存在有效授予 → 可用；否则按最近一条授予判定
-     * 已撤销 / 已过期 / 已停用。有效期取有效授予中最晚到期（任一永久则视为永久）。
+     * <p>同一装饰只要存在有效授予，就以有效授予计算库存；资产可用时为可用，
+     * 资产不可用时为已下架。没有有效授予时，按最近发生的失效事件判定已撤销 / 已过期，
+     * 不能按授予创建时间判定，否则较早授予、较晚撤销的记录会被较新的过期记录遮盖。
+     * 有效期取有效授予中最晚到期（任一永久则视为永久）。
      */
-    private InventoryItem aggregateItem(String assetName, List<UserDecorationGrant> grants,
+    static InventoryItem aggregateItem(String assetName, List<UserDecorationGrant> grants,
         Map<String, UserDecorationAsset> assetMap, Instant now) {
         var item = new InventoryItem();
         item.setAssetName(assetName);
@@ -114,35 +117,75 @@ public class DecorationProfileService {
             item.setRarityName(assetSpec.getRarityName());
         }
 
-        // grants 已按 grantedAt desc 排序，首条为最近一次授予
-        var latest = grants.get(0);
-        item.setGrantName(latest.getMetadata().getName());
-
         boolean assetActive = asset != null && asset.isActive();
         var activeGrants = grants.stream().filter(grant -> grant.isActiveAt(now)).toList();
 
-        if (assetActive && !activeGrants.isEmpty()) {
-            item.setStatus(InventoryItem.STATUS_AVAILABLE);
-            item.setAvailable(true);
+        if (!activeGrants.isEmpty()) {
+            var representative = latestGranted(activeGrants);
+            item.setGrantName(representative.getMetadata().getName());
+            item.setGrantedAt(representative.getSpec().getGrantedAt());
             // 有效期：任一永久=永久，否则取最晚到期（与公开装饰墙同源聚合）
             item.setExpiresAt(UserDecorationGrant.effectiveExpiresAt(activeGrants));
-            item.setGrantedAt(activeGrants.stream()
-                .map(grant -> grant.getSpec().getGrantedAt())
-                .filter(grantedAt -> grantedAt != null)
-                .max(Instant::compareTo)
-                .orElse(latest.getSpec().getGrantedAt()));
+            item.setAvailable(assetActive);
+            item.setStatus(assetActive
+                ? InventoryItem.STATUS_AVAILABLE
+                : InventoryItem.STATUS_DISABLED);
         } else {
+            var invalidation = latestInvalidation(grants, now);
+            var representative = invalidation.grant();
+            item.setGrantName(representative.getMetadata().getName());
             item.setAvailable(false);
-            item.setGrantedAt(latest.getSpec().getGrantedAt());
-            item.setExpiresAt(latest.getSpec().getExpiresAt());
-            switch (latest.stateAt(now)) {
+            item.setGrantedAt(representative.getSpec().getGrantedAt());
+            item.setExpiresAt(representative.getSpec().getExpiresAt());
+            switch (invalidation.state()) {
                 case REVOKED -> item.setStatus(InventoryItem.STATUS_REVOKED);
                 case EXPIRED -> item.setStatus(InventoryItem.STATUS_EXPIRED);
-                // 授予仍有效但资产被停用 / 归档 / 已删除
-                case ACTIVE -> item.setStatus(InventoryItem.STATUS_DISABLED);
+                case ACTIVE -> throw new IllegalStateException(
+                    "Active grant cannot be selected as an invalidation");
             }
         }
         return item;
+    }
+
+    private static UserDecorationGrant latestGranted(List<UserDecorationGrant> grants) {
+        return grants.stream()
+            .max(Comparator.comparing(
+                grant -> grant.getSpec().getGrantedAt(),
+                Comparator.nullsFirst(Comparator.naturalOrder())))
+            .orElseThrow();
+    }
+
+    private static GrantInvalidation latestInvalidation(List<UserDecorationGrant> grants,
+        Instant now) {
+        return grants.stream()
+            .map(grant -> {
+                var state = grant.stateAt(now);
+                return new GrantInvalidation(grant, state, invalidatedAt(grant, state));
+            })
+            .filter(invalidation -> invalidation.state() != UserDecorationGrant.State.ACTIVE)
+            .max(Comparator
+                .comparing(GrantInvalidation::occurredAt,
+                    Comparator.nullsFirst(Comparator.naturalOrder()))
+                // 时间相同优先展示撤销，和 UserDecorationGrant.stateAt 的领域顺序一致。
+                .thenComparingInt(invalidation ->
+                    invalidation.state() == UserDecorationGrant.State.REVOKED ? 1 : 0))
+            .orElseThrow();
+    }
+
+    private static Instant invalidatedAt(UserDecorationGrant grant,
+        UserDecorationGrant.State state) {
+        return switch (state) {
+            case REVOKED -> grant.getSpec().getRevokedAt() != null
+                ? grant.getSpec().getRevokedAt()
+                : grant.getSpec().getGrantedAt();
+            case EXPIRED -> grant.getSpec().getExpiresAt();
+            case ACTIVE -> null;
+        };
+    }
+
+    private record GrantInvalidation(UserDecorationGrant grant,
+                                     UserDecorationGrant.State state,
+                                     Instant occurredAt) {
     }
 
     // ───────────────────────── 当前佩戴 ─────────────────────────
@@ -182,8 +225,7 @@ public class DecorationProfileService {
         if (slots.isEmpty()) {
             return Mono.just(view);
         }
-        // 佩戴校验的资产与该用户全部授予各读一次、槽位间共享
-        //（此前每槽独立查询：佩戴满 11 槽 = 22 次串行存储访问，查的还是同一用户）
+        // 佩戴校验所需资产与该用户全部授予各读取一次，并在槽位间共享。
         var now = Instant.now();
         var assetNames = slots.stream().map(SlotEntry::assetName).distinct().toList();
         return Mono.zip(loadAssets(assetNames), loadGrantsByAsset(userName))
@@ -237,7 +279,7 @@ public class DecorationProfileService {
                 "展示勋章超限",
                 "展示勋章最多 " + InteractionPlusConst.BADGE_SHOWCASE_MAX + " 个。"));
         }
-        // 不再因失效项拒绝保存；持久化后由 buildProfileView 标记 invalidItems 供前端角标展示
+        // 失效项不阻止保存；持久化后由 buildProfileView 标记 invalidItems 供前端展示角标。
         return upsert(userName, spec -> applyParam(spec, userName, param));
     }
 

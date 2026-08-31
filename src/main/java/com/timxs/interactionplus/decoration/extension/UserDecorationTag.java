@@ -33,7 +33,8 @@ public class UserDecorationTag extends AbstractExtension {
         @Schema(maxLength = 200, description = "描述")
         private String description;
 
-        @Schema(pattern = HEX_COLOR_PATTERN, description = "标签颜色")
+        @Schema(pattern = HEX_COLOR_PATTERN,
+            description = "标签颜色（#RGB / #RRGGBB / #RRGGBBAA，可空）")
         private String color;
 
         @Schema(description = "是否启用")

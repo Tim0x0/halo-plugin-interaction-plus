@@ -21,13 +21,12 @@ import run.halo.app.extension.ReactiveExtensionClient;
  * <p>每天凌晨 3 点（低峰期）扫描，删除「已撤销 / 已过期且失效时间超过保留天数」的授予记录；
  * 有效授予永不删除；grantRetentionDays=0 时不清理。删除幂等。
  *
- * <p>定时由 Spring {@link Scheduled} 驱动，对齐 Halo 官方清理任务（如
- * {@code RememberTokenCleaner} / {@code NotificationAutoCleanupTask}）。
+ * <p>定时由 Spring {@link Scheduled} 驱动。
  * 插件上下文经 {@code InteractionPlusConfiguration} 的 {@code @EnableScheduling} 开启调度；
  * 插件停用时上下文关闭，定时任务自动取消，无需手动管理生命周期。
  *
  * @author Tim0x0
- * @since 0.1.0
+ * @since 1.0.0
  */
 @Slf4j
 @Service
@@ -41,7 +40,7 @@ public class GrantRetentionService {
     private final InteractionPlusSettingService settingService;
 
     /**
-     * 每天凌晨 3 点执行清理（cron 对齐官方 {@code RememberTokenCleaner}）。
+     * 每天凌晨 3 点执行清理。
      *
      * <p>在调度线程上 {@code block} 等待本次清理完成，确保 {@code @Scheduled} 的
      * 串行语义（上一次未结束不会重叠触发下一次）；超时仅作兜底防卡死。

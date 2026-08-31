@@ -14,10 +14,16 @@ public class IdentityMarkMappingParam {
     /** 身份标识显示名称，必填。 */
     private String displayName;
 
-    /** 图标地址或图标标识。 */
+    /** 展示形态：{@code text} / {@code icon} / {@code image}。缺省按哪个字段非空推断。 */
+    private String displayMode;
+
+    /** 图标库字形（data URL）。 */
     private String icon;
 
-    /** 标识颜色。 */
+    /** 上传图地址（附件）。 */
+    private String image;
+
+    /** 文字牌颜色（仅 text 形态生效；可空，空=模板默认铬件）。 */
     private String color;
 
     /** 优先级，越大越靠前。 */

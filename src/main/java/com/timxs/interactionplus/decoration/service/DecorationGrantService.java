@@ -378,9 +378,8 @@ public class DecorationGrantService {
      * 单实例内按 userName 把任务串成链表（前一个完成后才执行下一个）。
      * 任务结束后若自己仍是链尾则清理映射，避免内存泄漏。
      *
-     * <p>已知限制：排队中的任务被取消（如 HTTP 连接中断）时，doFinally 会立即放行链上
-     * 后继任务，极端时序下后继可能与仍在执行的前驱并发。Console 低并发场景实际影响可忽略，
-     * 有意不为此引入取消隔离的复杂度；若未来出现高并发授予入口需一并重审。
+     * <p>这是进程内的尽力串行机制，不是分布式锁。排队任务被取消时 {@code doFinally}
+     * 会放行后继；上游若未及时响应取消，极端时序下可能短暂并发。
      */
     private <T> Mono<T> serializeByUser(String userName, Mono<T> task) {
         return Mono.defer(() -> {
@@ -446,7 +445,7 @@ public class DecorationGrantService {
                     default -> throw new IllegalStateException("未知授予结果：" + outcome.status());
                 }
             }
-            // 按用户合并“获得装饰”通知；跨来源补发（新建前任一来源已持有）不重复通知
+            // 按用户合并「获得装饰」通知；跨来源补发（新建前任一来源已持有）不重复通知
             Map<String, List<String>> grantedByUser = outcomes.stream()
                 .filter(o -> o.status() == OutcomeStatus.GRANTED && !o.heldBefore())
                 .collect(Collectors.groupingBy(o -> o.pair().user(),

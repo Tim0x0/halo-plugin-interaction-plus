@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'com.timxs.interactionplus'
-// 版本号由根项目 gradle.properties 的 version 提供，同时作为 JitPack 发布版本
+// 版本号由根项目 gradle.properties 提供。
 
 repositories {
     mavenCentral()
@@ -30,23 +30,21 @@ tasks.withType(JavaCompile).configureEach {
     options.release = 21
 }
 
-// 发布到 JitPack，供其他 Halo 插件 compileOnly 依赖（接口 + DTO）。
+// api 模块的 Maven publication，供其他 Halo 插件以 compileOnly 方式引用接口与 DTO。
 // JitPack 多模块坐标约定（见 https://docs.jitpack.io/ ）：
 //   group    = com.github.<GitHub 用户>.<仓库名>
 //   artifact = 模块 artifactId（此处为 api）
-//   version  = git tag（须与 gradle.properties 的 version 保持一致）
-// 最终坐标：com.github.Tim0x0.halo-plugin-interaction-plus:api:<version>
-// 发布方式：打 tag（如 v0.1.0）并 push，JitPack 收到后自动构建出包。
+//   version  = project.version
+// 1.0.0 坐标：com.github.Tim0x0.halo-plugin-interaction-plus:api:1.0.0
 publishing {
     publications {
         mavenJava(MavenPublication) {
             from components.java
-            // 显式覆盖发布坐标；project.group（com.timxs.interactionplus）仅用于本地构建命名空间，
-            // 不影响 JitPack 路由——JitPack 按 USER.REPO 定位仓库、按 artifactId 取模块。
+            // project.group 只用于源码构建命名空间；这里显式声明对外依赖坐标。
             groupId = 'com.github.Tim0x0.halo-plugin-interaction-plus'
             artifactId = 'api'
             version = project.version
-            // POM 元数据：JitPack 不强制，Maven Central 是硬要求，提前补齐
+            // Maven publication 元数据。
             pom {
                 name = 'interaction-plus api'
                 description = 'Interaction Plus 对外插件 API：发奖、身份查询与统计贡献扩展点的接口与 DTO'

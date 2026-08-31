@@ -37,9 +37,12 @@ import {
   formatDateTime,
   metadataLabel as metadataLabelOf,
   rarityColor as rarityColorOf,
+  restTagCount,
+  shownTags,
   STATUS_LABELS,
   STATUS_OPTIONS,
   STATUS_STATES,
+  tagChipStyle,
   TYPE_LABELS,
   TYPE_OPTIONS,
 } from '@/utils/decoration'
@@ -95,9 +98,7 @@ function metadataFilterItems(items: DecorationMetadata[], noneLabel: string) {
     { label: noneLabel, value: FILTER_NONE },
     ...items.map((item) => ({
       label:
-        item.spec.enabled === false
-          ? `${item.spec.displayName}（已停用）`
-          : item.spec.displayName,
+        item.spec.enabled === false ? `${item.spec.displayName}（已停用）` : item.spec.displayName,
       value: item.metadata.name,
     })),
   ]
@@ -119,20 +120,36 @@ const metadataLabel = (kind: MetadataOptionKind, name?: string) =>
 /** 稀有度描边色（取稀有度配置色）。 */
 const rarityColor = (name?: string) => rarityColorOf(metadataOptions.value, name)
 
+/** 标签列 hover 全称（chip 超出列宽时截断，靠 title 兜底）。 */
+const tagTitle = (names: string[]) => names.map((name) => metadataLabel('tags', name)).join('、')
+
+/** 标签 chip 配色：配置色只作描边；文字保持中性色，避免浅色标签在浅底上失去对比度。 */
+const tagStyle = (name: string) => tagChipStyle(metadataOptions.value, name)
+
 // ── 列表加载 ──────────────────────────────────────────
 
-const { items, total, page, size, loading, error, load, search, onPaginationChange, reloadAfterRemove } =
-  useListQuery<DecorationAsset>(({ page, size }) => {
-    const params: Record<string, string | number> = { page, size }
-    if (filters.keyword) params.keyword = filters.keyword
-    if (filters.submittedBy) params.submittedBy = filters.submittedBy
-    if (filters.type) params.type = filters.type
-    if (filters.status) params.status = filters.status
-    if (filters.categoryName) params.categoryName = filters.categoryName
-    if (filters.tagName) params.tagName = filters.tagName
-    if (filters.rarityName) params.rarityName = filters.rarityName
-    return assetApi.list(params)
-  })
+const {
+  items,
+  total,
+  page,
+  size,
+  loading,
+  error,
+  load,
+  search,
+  onPaginationChange,
+  reloadAfterRemove,
+} = useListQuery<DecorationAsset>(({ page, size }) => {
+  const params: Record<string, string | number> = { page, size }
+  if (filters.keyword) params.keyword = filters.keyword
+  if (filters.submittedBy) params.submittedBy = filters.submittedBy
+  if (filters.type) params.type = filters.type
+  if (filters.status) params.status = filters.status
+  if (filters.categoryName) params.categoryName = filters.categoryName
+  if (filters.tagName) params.tagName = filters.tagName
+  if (filters.rarityName) params.rarityName = filters.rarityName
+  return assetApi.list(params)
+})
 
 const chips = computed<FilterChip[]>(() => {
   const result: FilterChip[] = []
@@ -141,19 +158,31 @@ const chips = computed<FilterChip[]>(() => {
     result.push({ key: 'submittedBy', label: `投稿者：${filters.submittedBy}` })
   }
   if (filters.type) {
-    result.push({ key: 'type', label: `类型：${TYPE_LABELS[filters.type as keyof typeof TYPE_LABELS] ?? filters.type}` })
+    result.push({
+      key: 'type',
+      label: `类型：${TYPE_LABELS[filters.type as keyof typeof TYPE_LABELS] ?? filters.type}`,
+    })
   }
   if (filters.status) {
-    result.push({ key: 'status', label: `状态：${STATUS_LABELS[filters.status as keyof typeof STATUS_LABELS] ?? filters.status}` })
+    result.push({
+      key: 'status',
+      label: `状态：${STATUS_LABELS[filters.status as keyof typeof STATUS_LABELS] ?? filters.status}`,
+    })
   }
   if (filters.categoryName) {
-    result.push({ key: 'categoryName', label: `分类：${metadataLabel('categories', filters.categoryName)}` })
+    result.push({
+      key: 'categoryName',
+      label: `分类：${metadataLabel('categories', filters.categoryName)}`,
+    })
   }
   if (filters.tagName) {
     result.push({ key: 'tagName', label: `标签：${metadataLabel('tags', filters.tagName)}` })
   }
   if (filters.rarityName) {
-    result.push({ key: 'rarityName', label: `稀有度：${metadataLabel('rarities', filters.rarityName)}` })
+    result.push({
+      key: 'rarityName',
+      label: `稀有度：${metadataLabel('rarities', filters.rarityName)}`,
+    })
   }
   return result
 })
@@ -220,7 +249,9 @@ const TRANSITION_LABELS: Record<TransitionAction, string> = {
  * 当前状态下可用的流转菜单项（网格 / 列表两视图共用同一份状态机条件，
  * 与后端 DecorationStatus.canTransitionTo 对齐）。
  */
-function transitionActions(asset: DecorationAsset): Array<{ action: TransitionAction; label: string }> {
+function transitionActions(
+  asset: DecorationAsset,
+): Array<{ action: TransitionAction; label: string }> {
   const status = asset.spec.status
   const available: TransitionAction[] = []
   if (status === 'draft' || status === 'disabled') available.push('activate')
@@ -230,10 +261,7 @@ function transitionActions(asset: DecorationAsset): Array<{ action: TransitionAc
   return available.map((action) => ({ action, label: TRANSITION_LABELS[action] }))
 }
 
-async function transition(
-  asset: DecorationAsset,
-  action: TransitionAction,
-) {
+async function transition(asset: DecorationAsset, action: TransitionAction) {
   const name = asset.metadata.name
   if (transitionPending.value.has(name)) {
     return
@@ -314,14 +342,47 @@ onMounted(() => {
       <!-- 工具栏：官方灰底 header，左搜索右筛选 + 视图切换 -->
       <template #header>
         <div class="hip-toolbar">
-          <SearchInput v-model="filters.keyword" placeholder="搜索名称" @update:model-value="search" />
+          <SearchInput
+            v-model="filters.keyword"
+            placeholder="搜索名称"
+            @update:model-value="search"
+          />
           <div class="hip-toolbar__filters">
-            <FilterDropdown v-model="filters.type" label="类型" :items="TYPE_OPTIONS" @update:model-value="search" />
-            <FilterDropdown v-model="filters.status" label="状态" :items="STATUS_OPTIONS" @update:model-value="search" />
-            <FilterDropdown v-model="filters.categoryName" label="分类" :items="categoryFilterItems" @update:model-value="search" />
-            <FilterDropdown v-model="filters.tagName" label="标签" :items="tagFilterItems" @update:model-value="search" />
-            <FilterDropdown v-model="filters.rarityName" label="稀有度" :items="rarityFilterItems" @update:model-value="search" />
-            <SearchInput v-model="filters.submittedBy" placeholder="按投稿者筛选" @update:model-value="search" />
+            <FilterDropdown
+              v-model="filters.type"
+              label="类型"
+              :items="TYPE_OPTIONS"
+              @update:model-value="search"
+            />
+            <FilterDropdown
+              v-model="filters.status"
+              label="状态"
+              :items="STATUS_OPTIONS"
+              @update:model-value="search"
+            />
+            <FilterDropdown
+              v-model="filters.categoryName"
+              label="分类"
+              :items="categoryFilterItems"
+              @update:model-value="search"
+            />
+            <FilterDropdown
+              v-model="filters.tagName"
+              label="标签"
+              :items="tagFilterItems"
+              @update:model-value="search"
+            />
+            <FilterDropdown
+              v-model="filters.rarityName"
+              label="稀有度"
+              :items="rarityFilterItems"
+              @update:model-value="search"
+            />
+            <SearchInput
+              v-model="filters.submittedBy"
+              placeholder="按投稿者筛选"
+              @update:model-value="search"
+            />
             <div class="hip-view-switch" role="group" aria-label="视图切换">
               <button
                 type="button"
@@ -357,9 +418,11 @@ onMounted(() => {
           v-for="asset in items"
           :key="asset.metadata.name"
           class="hip-grid__card"
-          :style="rarityColor(asset.spec.rarityName)
-            ? { borderColor: rarityColor(asset.spec.rarityName) }
-            : undefined"
+          :style="
+            rarityColor(asset.spec.rarityName)
+              ? { borderColor: rarityColor(asset.spec.rarityName) }
+              : undefined
+          "
         >
           <div class="hip-grid__thumb" @click="openPreview(asset)">
             <AssetThumb
@@ -369,6 +432,13 @@ onMounted(() => {
               :display-name="asset.spec.displayName"
             />
             <span class="hip-grid__type">{{ TYPE_LABELS[asset.spec.type] }}</span>
+            <span
+              v-if="asset.spec.categoryName"
+              class="hip-grid__category"
+              :title="metadataLabel('categories', asset.spec.categoryName)"
+            >
+              {{ metadataLabel('categories', asset.spec.categoryName) }}
+            </span>
           </div>
           <div class="hip-grid__body">
             <div class="hip-grid__name" :title="asset.spec.displayName">
@@ -418,78 +488,156 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 行列表视图（原生 table：信息列按内容收缩，主列吃剩余空间） -->
-      <table v-else class="hip-table">
-        <thead>
-          <tr>
-            <th class="hip-td-fit"></th>
-            <th>装饰</th>
-            <th class="hip-td-fit">投稿人</th>
-            <th class="hip-td-fit">分类 / 稀有度</th>
-            <th class="hip-td-fit">状态</th>
-            <th class="hip-td-fit">创建时间</th>
-            <th class="hip-td-fit"></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="asset in items" :key="asset.metadata.name">
-            <td class="hip-td-fit">
-              <AssetThumb
-                size="sm"
-                :type="asset.spec.type"
-                :asset="asset.spec.asset"
-                :payload="asset.spec.payload"
-                :display-name="asset.spec.displayName"
-              />
-            </td>
-            <td>
-              <div class="hip-table__main">
-                <span class="hip-table__title">
-                  <span class="hip-table__title-text" :title="asset.spec.displayName">
-                    {{ asset.spec.displayName }}
+      <!-- 行列表视图：列宽由 colgroup 明确分配；低于最小宽度时保留信息密度并横向滑动。 -->
+      <div
+        v-else
+        class="hip-table-scroll"
+        role="region"
+        aria-label="装饰资产列表，可横向滚动查看完整信息"
+        tabindex="0"
+      >
+        <table class="hip-table hip-assets-table">
+          <colgroup>
+            <col class="hip-assets-table__col--asset" />
+            <col class="hip-assets-table__col--category" />
+            <col class="hip-assets-table__col--tags" />
+            <col class="hip-assets-table__col--rarity" />
+            <col class="hip-assets-table__col--status" />
+            <col class="hip-assets-table__col--submitter" />
+            <col class="hip-assets-table__col--created" />
+            <col class="hip-assets-table__col--actions" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>装饰</th>
+              <th>分类</th>
+              <th>标签</th>
+              <th>稀有度</th>
+              <th>状态</th>
+              <th>投稿人</th>
+              <th>创建时间</th>
+              <th class="hip-table__sticky-end" aria-label="操作"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="asset in items" :key="asset.metadata.name">
+              <td>
+                <div class="hip-assets-table__asset">
+                  <AssetThumb
+                    size="sm"
+                    :type="asset.spec.type"
+                    :asset="asset.spec.asset"
+                    :payload="asset.spec.payload"
+                    :display-name="asset.spec.displayName"
+                  />
+                  <div class="hip-table__main">
+                    <span class="hip-table__title">
+                      <span class="hip-table__title-text" :title="asset.spec.displayName">
+                        {{ asset.spec.displayName }}
+                      </span>
+                      <VTag>{{ TYPE_LABELS[asset.spec.type] }}</VTag>
+                    </span>
+                    <span
+                      v-if="asset.spec.description"
+                      class="hip-table__desc"
+                      :title="asset.spec.description"
+                    >
+                      {{ asset.spec.description }}
+                    </span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span
+                  v-if="asset.spec.categoryName"
+                  class="hip-table__cell-ellipsis"
+                  :title="metadataLabel('categories', asset.spec.categoryName)"
+                >
+                  {{ metadataLabel('categories', asset.spec.categoryName) }}
+                </span>
+                <span v-else>-</span>
+              </td>
+              <td>
+                <span v-if="!asset.spec.tagNames?.length">-</span>
+                <span v-else class="hip-table__tags" :title="tagTitle(asset.spec.tagNames)">
+                  <span
+                    v-for="tag in shownTags(asset.spec.tagNames)"
+                    :key="tag"
+                    class="hip-tag"
+                    :style="tagStyle(tag)"
+                  >
+                    {{ metadataLabel('tags', tag) }}
                   </span>
-                  <VTag>{{ TYPE_LABELS[asset.spec.type] }}</VTag>
+                  <span
+                    v-if="restTagCount(asset.spec.tagNames)"
+                    class="hip-tag hip-tag--more"
+                    aria-label="更多标签"
+                  >
+                    +{{ restTagCount(asset.spec.tagNames) }}
+                  </span>
                 </span>
-                <span v-if="asset.spec.description" class="hip-table__desc" :title="asset.spec.description">
-                  {{ asset.spec.description }}
+              </td>
+              <td>
+                <span
+                  v-if="asset.spec.rarityName"
+                  class="hip-table__cell-ellipsis"
+                  :style="{ color: rarityColor(asset.spec.rarityName) }"
+                  :title="metadataLabel('rarities', asset.spec.rarityName)"
+                >
+                  {{ metadataLabel('rarities', asset.spec.rarityName) }}
                 </span>
-              </div>
-            </td>
-            <td class="hip-td-fit">{{ asset.spec.submittedBy }}</td>
-            <td class="hip-td-fit">
-              {{ [metadataLabel('categories', asset.spec.categoryName), metadataLabel('rarities', asset.spec.rarityName)].filter(Boolean).join(' / ') }}
-            </td>
-            <td class="hip-td-fit">
-              <VStatusDot
-                :state="STATUS_STATES[asset.spec.status]"
-                :text="STATUS_LABELS[asset.spec.status]"
-              />
-            </td>
-            <td class="hip-td-fit">{{ formatDateTime(asset.metadata.creationTimestamp) }}</td>
-            <td class="hip-td-fit">
-              <RowActions>
-                <VDropdownItem @click="openPreview(asset)">预览</VDropdownItem>
-                <VDropdownItem @click="openEdit(asset)">编辑</VDropdownItem>
-                <VDropdownItem
-                  v-if="asset.spec.status === 'active'"
-                  v-permission="['plugin:interaction-plus:decoration:grant']"
-                  @click="openGrant(asset)"
+                <span v-else>-</span>
+              </td>
+              <td>
+                <VStatusDot
+                  :state="STATUS_STATES[asset.spec.status]"
+                  :text="STATUS_LABELS[asset.spec.status]"
+                />
+              </td>
+              <!-- 投稿人 / 创建时间：元信息靠右成组 -->
+              <td>
+                <span
+                  v-if="asset.spec.submittedBy"
+                  class="hip-table__cell-ellipsis"
+                  :title="asset.spec.submittedBy"
                 >
-                  授予
-                </VDropdownItem>
-                <VDropdownItem
-                  v-for="item in transitionActions(asset)"
-                  :key="item.action"
-                  @click="transition(asset, item.action)"
+                  {{ asset.spec.submittedBy }}
+                </span>
+                <span v-else>-</span>
+              </td>
+              <td>
+                <span
+                  class="hip-table__cell-ellipsis"
+                  :title="formatDateTime(asset.metadata.creationTimestamp)"
                 >
-                  {{ item.label }}
-                </VDropdownItem>
-                <VDropdownItem type="danger" @click="handleDelete(asset)">删除</VDropdownItem>
-              </RowActions>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+                  {{ formatDateTime(asset.metadata.creationTimestamp) }}
+                </span>
+              </td>
+              <td class="hip-assets-table__actions hip-table__sticky-end">
+                <RowActions>
+                  <VDropdownItem @click="openPreview(asset)">预览</VDropdownItem>
+                  <VDropdownItem @click="openEdit(asset)">编辑</VDropdownItem>
+                  <VDropdownItem
+                    v-if="asset.spec.status === 'active'"
+                    v-permission="['plugin:interaction-plus:decoration:grant']"
+                    @click="openGrant(asset)"
+                  >
+                    授予
+                  </VDropdownItem>
+                  <VDropdownItem
+                    v-for="item in transitionActions(asset)"
+                    :key="item.action"
+                    @click="transition(asset, item.action)"
+                  >
+                    {{ item.label }}
+                  </VDropdownItem>
+                  <VDropdownItem type="danger" @click="handleDelete(asset)">删除</VDropdownItem>
+                </RowActions>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       <template #footer>
         <VPagination
@@ -513,6 +661,7 @@ onMounted(() => {
     <AssetPreviewModal
       v-if="previewVisible && selectedAsset"
       :asset="selectedAsset"
+      :metadata-options="metadataOptions"
       @close="previewVisible = false"
     />
     <GrantModal
@@ -589,7 +738,9 @@ onMounted(() => {
   border-radius: var(--hip-radius-card);
   background: var(--hip-bg-card);
   overflow: hidden;
-  transition: box-shadow var(--hip-transition), transform var(--hip-transition);
+  transition:
+    box-shadow var(--hip-transition),
+    transform var(--hip-transition);
 }
 .hip-grid__card:hover {
   box-shadow: var(--hip-shadow-hover);
@@ -611,6 +762,23 @@ onMounted(() => {
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid var(--hip-border);
   color: var(--hip-text-secondary);
+}
+/* 分类徽标：缩略图左下角，与左上角类型徽标同列成组（右上角在 UC 侧是「佩戴中」，留空不占） */
+.hip-grid__category {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  max-width: calc(100% - 16px);
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--hip-border);
+  color: var(--hip-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .hip-grid__body {
   padding: 10px 12px 12px;
@@ -644,5 +812,53 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   margin-top: 2px;
+}
+
+/* 资产列表使用显式列规格：内容主列弹性伸缩，其余列按信息类型分配稳定宽度。
+   表格窄于 min-width 时由外层横向滚动，长投稿人与标签不参与挤压主列。 */
+.hip-assets-table {
+  min-width: 1160px;
+  table-layout: fixed;
+}
+.hip-assets-table__col--category {
+  width: 112px;
+}
+.hip-assets-table__col--tags {
+  width: 232px;
+}
+.hip-assets-table__col--rarity {
+  width: 104px;
+}
+.hip-assets-table__col--status {
+  width: 92px;
+}
+.hip-assets-table__col--submitter {
+  width: 136px;
+}
+.hip-assets-table__col--created {
+  width: 144px;
+}
+.hip-assets-table__col--actions {
+  width: 48px;
+}
+.hip-assets-table tbody tr,
+.hip-assets-table td {
+  height: 64px;
+}
+.hip-assets-table__asset {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.hip-assets-table__asset .hip-table__main,
+.hip-assets-table__asset .hip-table__title,
+.hip-assets-table__asset .hip-table__title-text,
+.hip-assets-table__asset .hip-table__desc {
+  min-width: 0;
+  max-width: 100%;
+}
+.hip-assets-table__actions {
+  text-align: center;
 }
 </style>

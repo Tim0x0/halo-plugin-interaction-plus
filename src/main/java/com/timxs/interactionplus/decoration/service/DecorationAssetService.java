@@ -72,10 +72,10 @@ public class DecorationAssetService {
     /** 素材内容读取大小上限（与素材建议上限同量级，防止超大响应占用内存）。 */
     private static final int MATERIAL_MAX_BYTES = 4 * 1024 * 1024;
 
-    /** 校验素材 URL 允许的协议（B2：SSRF 防护）。 */
+    /** 校验素材 URL 允许的协议（SSRF 防护）。 */
     private static final Set<String> ALLOWED_SCHEMES = Set.of("http", "https");
 
-    /** 颜色格式校验（hex），与 schema/前端约束一致，防 CSS/HTML 注入。 */
+    /** 昵称颜色格式校验（hex）；仅此字段需要，其余颜色字段由 spec 的 @Schema(pattern) 兜底。 */
     private static final Pattern HEX_COLOR = Pattern.compile(InteractionPlusConst.HEX_COLOR_PATTERN);
 
     private final WebClient webClient = WebClient.builder()
@@ -313,19 +313,13 @@ public class DecorationAssetService {
         var type = DecorationType.from(asset.getSpec().getType());
         var payload = asset.getSpec().getPayload();
         if (type == DecorationType.TITLE) {
-            // titleText 恒必填：text 形态的本体，image 形态的替代文本与加载失败回落
+            // titleText 必填（行内展示 + 称号图的 alt / 裂图回落）；图可选。
             if (payload == null || !StringUtils.hasText(payload.getTitleText())) {
                 throw InteractionPlusException.badRequest(ErrorCodes.VALIDATION_FAILED,
-                    "称号内容缺失", "称号类装饰必须填写称号文本。");
+                    "称号内容缺失", "称号类装饰必须填写称号名称。");
             }
-            String mode = payload.getTitleMode();
-            if (!"text".equals(mode) && !"image".equals(mode)) {
-                throw InteractionPlusException.badRequest(ErrorCodes.VALIDATION_FAILED,
-                    "称号形态非法", "称号形态必须为 text（文字牌）或 image（整图）。");
-            }
-            validateHexColor(payload.getTitleColor(), "称号文字颜色");
-            validateHexColor(payload.getTitleBackground(), "称号背景颜色");
-            validateHexColor(payload.getTitleBackgroundSecondary(), "称号背景第二色");
+            // 称号三色不在此校验：三个字段的 spec 上都有 @Schema(pattern)，
+            // Halo 写入时按 schema 校验并抛 400，服务层重复一遍没有意义
         } else if (type == DecorationType.NAME_STYLE) {
             var nameStyle = payload == null ? null : payload.getNameStyle();
             if (nameStyle == null || !StringUtils.hasText(nameStyle.getMode())
@@ -341,28 +335,34 @@ public class DecorationAssetService {
                 throw InteractionPlusException.badRequest(ErrorCodes.VALIDATION_FAILED,
                     "昵称样式非法", "纯色需 1 个颜色，渐变需 2 到 3 个颜色。");
             }
-            nameStyle.getColors().forEach(color -> validateHexColor(color, "昵称颜色"));
+            nameStyle.getColors().forEach(this::validateNameStyleColor);
         }
     }
 
-    /** 校验颜色为合法 hex（空值跳过）；与前端 filter、元数据 schema 约束一致，防 CSS/HTML 注入。 */
-    private void validateHexColor(String color, String fieldLabel) {
+    /**
+     * 昵称颜色是**唯一没有 schema 兜底**的颜色字段，故这一处校验不能省。
+     *
+     * <p>原因：{@code colors} 是 {@code List<String>}，`@Schema` 的 pattern 加不到数组元素上
+     * ——实测生成的 schema 里 items 只有 type / minLength，没有 pattern。而其余颜色字段
+     * （称号三色、标签、稀有度、身份标识）都在各自 spec 上带 `@Schema(pattern)`，
+     * 由 Halo 在写入时校验，服务层不做重复校验。
+     *
+     * <p>颜色最终会被拼进前台的 CSS 文本（见 runtime 的 nameStyleCss），
+     * 前台还有 safeHexColor 白名单过滤，这里拦的是「脏值落库」。
+     */
+    private void validateNameStyleColor(String color) {
         if (StringUtils.hasText(color) && !HEX_COLOR.matcher(color).matches()) {
             throw InteractionPlusException.badRequest(ErrorCodes.VALIDATION_FAILED,
-                "颜色格式非法", fieldLabel + "必须为 #RGB 或 #RRGGBB 格式的十六进制颜色。");
+                "颜色格式非法", "昵称颜色必须为 #RGB、#RRGGBB 或 #RRGGBBAA 格式的十六进制颜色。");
         }
     }
 
     private Mono<Void> validateMaterial(UserDecorationAsset asset) {
-        // name_style / 文字牌称号不依赖素材；整图称号（titleMode=image）与其余类型必须有素材地址
+        // name_style / 称号不依赖素材：称号必有文字，图只是可选增强（有图卡片显示图，无图显示文字牌）
         var type = DecorationType.from(asset.getSpec().getType());
         var ref = asset.getSpec().getAsset();
         String url = ref == null ? null : ref.getUrl();
-        var payload = asset.getSpec().getPayload();
-        boolean imageTitle = type == DecorationType.TITLE
-            && payload != null && "image".equals(payload.getTitleMode());
-        boolean materialRequired = imageTitle
-            || (type != DecorationType.TITLE && type != DecorationType.NAME_STYLE);
+        boolean materialRequired = type != DecorationType.TITLE && type != DecorationType.NAME_STYLE;
         if (!StringUtils.hasText(url)) {
             if (materialRequired) {
                 return Mono.error(InteractionPlusException.badRequest(ErrorCodes.VALIDATION_FAILED,
@@ -381,13 +381,13 @@ public class DecorationAssetService {
                             ErrorCodes.SVG_UNSAFE, "SVG 安全校验失败",
                             "SVG 含脚本、事件属性或外链等危险内容，已拒绝启用。")));
             }
-            // 非 SVG 素材不做服务端可达性探测（对齐 Halo 官方：附件 URL 选定即信任）
+            // 非 SVG 素材不做服务端可达性探测：附件 URL 选定即信任
             return Mono.empty();
         }));
     }
 
     /**
-     * SSRF 防护（B2）：素材为用户配置的绝对地址时，限定 http/https 协议，
+     * SSRF 防护：素材为用户配置的绝对地址时，限定 http/https 协议，
      * 且禁止解析到回环 / 私有网段 / 链路本地地址，防止服务端被用于探测内网。
      * 站内相对地址不在此限制（candidateUrls 构造的本地回环访问是预期行为）。
      * 校验与请求间存在 DNS 重绑定窗口，属纵深防御层面的已接受残留
@@ -568,7 +568,7 @@ public class DecorationAssetService {
         conditions.add(isNull("metadata.deletionTimestamp"));
         addEqualIfPresent(conditions, "spec.type", params.getFirst("type"));
         addEqualIfPresent(conditions, "spec.status", params.getFirst("status"));
-        // 分类 / 稀有度 / 标签支持“未分类 / 无稀有度 / 无标签”哨兵值
+        // 分类 / 稀有度 / 标签支持「未分类 / 无稀有度 / 无标签」哨兵值
         addEqualOrNone(conditions, "spec.categoryName", params.getFirst("categoryName"));
         addEqualOrNone(conditions, "spec.rarityName", params.getFirst("rarityName"));
         addEqualIfPresent(conditions, "spec.submittedBy", params.getFirst("submittedBy"));

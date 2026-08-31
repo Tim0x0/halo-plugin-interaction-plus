@@ -9,7 +9,7 @@ import reactor.core.publisher.Mono;
  * 对外身份查询 API：供其他 Halo 插件在<b>后端（进程内）</b>查询用户的公开身份与装扮数据，
  * 用于服务端聚合 / 内嵌到调用方自己的 API 响应中。
  *
- * <p><b>与其他读出口同源</b>：内部与公开 HTTP API（{@code GET /identity/{userName}}）、主题 Finder
+ * <p><b>与其他读出口同源</b>：内部与公开 HTTP API（{@code GET /identity/{userName}}）、Halo 模板 Finder
  * （{@code interactionPlus.getIdentity(...)}）共用同一聚合服务，返回内容、判空行为、
  * 对用户禁用 / 删除的处理三个出口一致，仅出口形态不同。只读、无副作用，可任意重试。
  *
@@ -24,23 +24,13 @@ import reactor.core.publisher.Mono;
  *     // interaction-plus 缺席时为空流，下游自然跳过
  * }</pre>
  *
- * <p>外部插件还需在自身 {@code plugin.yaml} 以<b>可选依赖</b>声明本插件（缺席时不影响外部启动）：
+ * <p>外部插件还需在自身 {@code plugin.yaml} 声明 {@code interaction-plus} 可选依赖，
+ * 版本范围为 {@code >=1.0.0}，并使用 {@code api:1.0.0} 构件。完整配置见对外插件 API 对接指南。
  *
- * <pre>{@code
- * spec:
- *   pluginDependencies:
- *     "interaction-plus?": ">=0.1.0"   # 末尾问号 = 可选依赖
- * }</pre>
- *
- * <p><b>脱敏责任</b>：返回的 {@link PublicIdentity} 含 {@code userName}（进程内做关联 / 缓存键用）。
- * 若把查询结果内嵌进你自己的<b>公开</b> API 响应，下发浏览器前<b>必须剥掉 {@code userName}</b>——
- * Halo 对评论者等互动用户的用户名明确脱敏（防枚举），不要替它解除；displayName、avatar
- * 及各装扮展示字段可以下发。
- *
- * <p><b>稳定性</b>：随 {@code 0.1.x} 以<b>实验性</b>状态发布——契约已定型但尚未经大规模生产验证，
- * 可能随首批接入者的反馈微调；调整将保持前向兼容（只增不改）并同步到对接文档。
+ * <p><b>API 契约版本</b>：{@code 1.0.0}。
  *
  * @author Tim0x0
+ * @since 1.0.0
  */
 public interface PublicIdentityQueryApi extends ExtensionPoint {
 
@@ -59,7 +49,7 @@ public interface PublicIdentityQueryApi extends ExtensionPoint {
      * 批量查询公开身份。
      *
      * <p>自动忽略空白项并去重；去重后单次上限 50，超出以 {@link IllegalArgumentException}
-     * 走 error 通道（与公开 HTTP 批量接口一致）。查不到 / 被禁用的用户不出现在结果中
+     * 走 error 通道（上限数值与公开 HTTP 批量接口一致）。查不到 / 被禁用的用户不出现在结果中
      * （不占位、不报错），调用方按 {@link PublicIdentity#userName()} 关联即可；
      * 单个用户聚合失败不影响整批（该用户同样缺席）。{@code userNames} 为 {@code null}
      * 或全空白时返回空 {@code Flux}。
