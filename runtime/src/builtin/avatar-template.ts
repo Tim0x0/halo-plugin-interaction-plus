@@ -90,10 +90,14 @@ const CSS = `*,
 /* 三层（首字母占位 / 头像 img / 头像框）一律绝对定位，共用 .wrapper 一个参照系。
    占位层不能走正常流：:host 的 font-size 即头像边长，行盒 strut 的 ascent 会压过
    占位层基线、把它下推约 0.22em，而 absolute 的 img 与 frame 不受影响 —— 结果是
-   没有头像的用户看到首字母与框错开一截 */
+   没有头像的用户看到首字母与框错开一截。
+   img 是替换元素：inset: 0 只定偏移，宽高仍走固有尺寸，必须显式 100% 才装进参照盒；
+   span 占位靠 inset 就能铺满。object-fit 也要在有明确宽高时才生效。 */
 .avatar {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   object-fit: cover;
   display: inline-flex;

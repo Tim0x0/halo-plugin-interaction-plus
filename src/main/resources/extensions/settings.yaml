@@ -189,7 +189,7 @@ spec:
               name: grantRetentionDays
               label: 失效授予记录保留天数
               help: 已撤销 / 已过期的授予记录超过该天数后自动清理；0 表示永不清理。有效授予永不清理。
-              value: 0
+              value: 30
               min: 0
               max: 3650
               validation: "min:0|max:3650"

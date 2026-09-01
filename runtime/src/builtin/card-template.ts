@@ -502,10 +502,13 @@ const CSS = `*,
 }
 
 /* 三层（首字母占位 / 头像 img / 头像框）一律绝对定位，共用 .avatar-wrap 一个参照系：
-   占位层走正常流会被行盒基线推离 absolute 的两层（见 avatar-template.ts 同处注释） */
+   占位层走正常流会被行盒基线推离 absolute 的两层（见 avatar-template.ts 同处注释）。
+   img 是替换元素：inset: 0 只定偏移，宽高仍走固有尺寸，必须显式 100% 才装进参照盒。 */
 .avatar {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   object-fit: cover;
   box-shadow: 0 3px 10px rgba(11, 18, 32, 0.3);

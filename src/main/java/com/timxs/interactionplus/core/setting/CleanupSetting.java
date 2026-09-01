@@ -9,5 +9,5 @@ import lombok.Data;
 public class CleanupSetting {
 
     /** 失效授予记录（已撤销 / 已过期）保留天数；0 表示永不清理。 */
-    private int grantRetentionDays = 0;
+    private int grantRetentionDays = 30;
 }
