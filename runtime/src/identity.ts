@@ -125,7 +125,8 @@ export interface DisplayConfig {
   avatarFallbackStyle?: 'halo' | 'hash'
 }
 
-const API_BASE = '/apis/api.interaction-plus.timxs.com/v1alpha1'
+/** 插件公开 API 基础路径（身份查询与自定义模板拉取共用）。 */
+export const API_BASE = '/apis/api.interaction-plus.timxs.com/v1alpha1'
 
 // 同一页面对同一用户的并发请求合并
 const pending = new Map<string, Promise<PublicIdentity | null>>()

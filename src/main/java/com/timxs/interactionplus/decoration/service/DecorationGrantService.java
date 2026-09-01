@@ -1,7 +1,6 @@
 package com.timxs.interactionplus.decoration.service;
 
 import static run.halo.app.extension.ExtensionUtil.isDeleted;
-import static run.halo.app.extension.index.query.Queries.and;
 import static run.halo.app.extension.index.query.Queries.equal;
 import static run.halo.app.extension.index.query.Queries.isNull;
 
@@ -22,6 +21,7 @@ import com.timxs.interactionplus.decoration.model.RevokeHeldParam;
 import com.timxs.interactionplus.decoration.model.RevokeParam;
 import com.timxs.interactionplus.decoration.model.RoleGrantParam;
 import com.timxs.interactionplus.core.notification.InteractionPlusNotificationService;
+import com.timxs.interactionplus.core.support.ExtensionQuerySupport;
 import com.timxs.interactionplus.core.support.ListRequestSupport;
 import com.timxs.interactionplus.core.support.NameGenerator;
 import com.timxs.interactionplus.core.support.RoleUtils;
@@ -36,6 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -44,7 +45,6 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
-import run.halo.app.core.extension.Role;
 import run.halo.app.core.extension.RoleBinding;
 import run.halo.app.core.extension.User;
 import run.halo.app.extension.ListOptions;
@@ -97,15 +97,18 @@ public class DecorationGrantService {
         var params = exchange.getRequest().getQueryParams();
         List<Condition> conditions = new ArrayList<>();
         conditions.add(isNull("metadata.deletionTimestamp"));
-        addEqualIfPresent(conditions, "spec.userName", params.getFirst("userName"));
-        addEqualIfPresent(conditions, "spec.assetName", params.getFirst("assetName"));
-        addEqualIfPresent(conditions, "spec.sourceRoleName", params.getFirst("sourceRoleName"));
+        ExtensionQuerySupport.addEqualIfPresent(conditions, "spec.userName",
+            params.getFirst("userName"));
+        ExtensionQuerySupport.addEqualIfPresent(conditions, "spec.assetName",
+            params.getFirst("assetName"));
+        ExtensionQuerySupport.addEqualIfPresent(conditions, "spec.sourceRoleName",
+            params.getFirst("sourceRoleName"));
         String revoked = params.getFirst("revoked");
         if (StringUtils.hasText(revoked)) {
             conditions.add(equal("spec.revoked", Boolean.parseBoolean(revoked)));
         }
-        Condition[] rest = conditions.subList(1, conditions.size()).toArray(Condition[]::new);
-        var options = ListOptions.builder().fieldQuery(and(conditions.get(0), rest)).build();
+        var options = ListOptions.builder()
+            .fieldQuery(ExtensionQuerySupport.andAll(conditions)).build();
         return client.listBy(UserDecorationGrant.class, options,
                 ListRequestSupport.toPageRequest(exchange, GRANT_SORT))
             .flatMap(this::toGrantViews);
@@ -154,7 +157,7 @@ public class DecorationGrantService {
                         // 用户显示名 / 头像（界面优先展示显示名，回退用户名）
                         var user = userMap.get(grant.getSpec().getUserName());
                         view.setUserDisplayName(
-                            userDisplayName(userMap, grant.getSpec().getUserName()));
+                            userDisplayName(user, grant.getSpec().getUserName()));
                         if (user != null) {
                             view.setUserAvatar(user.getSpec().getAvatar());
                         }
@@ -168,18 +171,12 @@ public class DecorationGrantService {
 
     /** 当页用户名去重后批量取 User（用于显示名 / 头像聚合）。 */
     private Mono<Map<String, User>> loadUsers(List<String> userNames) {
-        return Flux.fromIterable(userNames)
-            .flatMap(userName -> client.fetch(User.class, userName)
-                .map(user -> Map.entry(userName, user)))
-            .collectMap(Map.Entry::getKey, Map.Entry::getValue);
+        return ExtensionQuerySupport.fetchAll(client, User.class, userNames);
     }
 
     /** 当页角色名去重后批量取显示名（角色已删除时回退内部名）。 */
     private Mono<Map<String, String>> loadRoleDisplayNames(List<String> roleNames) {
-        return Flux.fromIterable(roleNames)
-            .flatMap(roleName -> client.fetch(Role.class, roleName)
-                .map(role -> Map.entry(roleName, RoleUtils.displayName(role))))
-            .collectMap(Map.Entry::getKey, Map.Entry::getValue);
+        return RoleUtils.displayNames(client, roleNames);
     }
 
     /** 服务端统一判定授予状态，避免客户端时钟偏差。 */
@@ -240,12 +237,30 @@ public class DecorationGrantService {
         Instant expiresAt = param.getExpiresAt();
         validateExpiresAt(expiresAt);
         return SecurityUtils.getCurrentUserName().flatMap(operator ->
-            validateRolesExist(roleNames)
+            RoleUtils.requireExists(client, roleNames)
                 .then(profileService.loadAssets(assetNames))
                 .flatMap(assetMap -> buildRolePairs(roleNames, assetNames)
-                    .flatMap(pairs -> processPairs(pairs, assetMap,
-                        UserDecorationGrant.GRANT_TYPE_ROLE_SNAPSHOT, reason, expiresAt,
-                        operator))));
+                    .flatMap(pairs -> pairs.isEmpty()
+                        ? emptyRolesError(roleNames)
+                        : processPairs(pairs, assetMap,
+                            UserDecorationGrant.GRANT_TYPE_ROLE_SNAPSHOT, reason, expiresAt,
+                            operator))));
+    }
+
+    /**
+     * 所选角色均无绑定用户时的明确拒绝。不拦截会静默返回全零结果，
+     * 前端以「授予完成（成功 0 项）」关闭弹窗，无从分辨是没展开出用户还是执行失败。
+     */
+    private Mono<BatchGrantResult> emptyRolesError(List<String> roleNames) {
+        return RoleUtils.displayNames(client, roleNames)
+            .flatMap(displayNames -> {
+                String roleText = roleNames.stream()
+                    .map(name -> displayNames.getOrDefault(name, name))
+                    .collect(Collectors.joining("、"));
+                return Mono.error(InteractionPlusException.badRequest(
+                    ErrorCodes.VALIDATION_FAILED, "角色下无用户",
+                    "角色「" + roleText + "」当前没有任何绑定用户，请先在用户管理中为用户分配角色。"));
+            });
     }
 
     /** 有效期非空时必须晚于当前时间（与前端同规则；API 直调同样拦截，避免产出生来即过期的授予）。 */
@@ -358,7 +373,7 @@ public class DecorationGrantService {
             .onErrorResume(error -> {
                 // 业务拒绝已在上方转为具体错误码，到这里的是写入层意外异常，留痕供排查
                 log.error("授予新建意外失败：user={}, asset={}", pair.user(), pair.asset(), error);
-                return Mono.just(Outcome.failed(pair, "GRANT_ERROR"));
+                return Mono.just(Outcome.failed(pair, ErrorCodes.GRANT_ERROR));
             });
     }
 
@@ -379,7 +394,7 @@ public class DecorationGrantService {
             .map(updated -> Outcome.renewed(pair, updated.getMetadata().getName()))
             .onErrorResume(error -> {
                 log.error("授予续期意外失败：user={}, asset={}", pair.user(), pair.asset(), error);
-                return Mono.just(Outcome.failed(pair, "GRANT_ERROR"));
+                return Mono.just(Outcome.failed(pair, ErrorCodes.GRANT_ERROR));
             });
     }
 
@@ -477,7 +492,10 @@ public class DecorationGrantService {
 
     /** 用户显示名解析：有显示名用显示名，否则回退用户名。 */
     private String userDisplayName(Map<String, User> userMap, String userName) {
-        var user = userMap.get(userName);
+        return userDisplayName(userMap.get(userName), userName);
+    }
+
+    private String userDisplayName(@Nullable User user, String userName) {
         if (user != null && StringUtils.hasText(user.getSpec().getDisplayName())) {
             return user.getSpec().getDisplayName();
         }
@@ -567,8 +585,8 @@ public class DecorationGrantService {
         if (StringUtils.hasText(categoryName)) {
             conditions.add(equal("spec.categoryName", categoryName));
         }
-        Condition[] rest = conditions.subList(1, conditions.size()).toArray(Condition[]::new);
-        var options = ListOptions.builder().fieldQuery(and(conditions.get(0), rest)).build();
+        var options = ListOptions.builder()
+            .fieldQuery(ExtensionQuerySupport.andAll(conditions)).build();
         return metadataService.loadRarityMap().flatMapMany(rarityMap ->
             client.listAll(UserDecorationAsset.class, options,
                     Sort.by(Sort.Order.desc("metadata.creationTimestamp")))
@@ -725,8 +743,7 @@ public class DecorationGrantService {
         if (!StringUtils.hasText(rarityName)) {
             return true;
         }
-        var rarity = rarityMap.get(rarityName);
-        return rarity == null || !Boolean.FALSE.equals(rarity.getSpec().getExternalGrantable());
+        return externallyGrantable(rarityMap.get(rarityName));
     }
 
     private GrantableDecoration toGrantable(
@@ -749,20 +766,20 @@ public class DecorationGrantService {
             return Mono.just(true);
         }
         return client.fetch(UserDecorationRarity.class, rarityName)
-            .map(rarity -> !Boolean.FALSE.equals(rarity.getSpec().getExternalGrantable()))
+            .map(DecorationGrantService::externallyGrantable)
             .defaultIfEmpty(true);
+    }
+
+    /** 外发准入判定：无稀有度 / 已删除默认允许，仅显式 false 拒绝（后台与外发共用同一规则）。 */
+    private static boolean externallyGrantable(@Nullable UserDecorationRarity rarity) {
+        return rarity == null || !Boolean.FALSE.equals(rarity.getSpec().getExternalGrantable());
     }
 
     /** 该用户该装饰当前全部有效授予（任意来源；未撤销、未过期）。多来源并存的基础查询。 */
     private Flux<UserDecorationGrant> listActiveGrants(String userName, String assetName) {
         var now = Instant.now();
-        var options = ListOptions.builder()
-            .fieldQuery(and(equal("spec.userName", userName),
-                equal("spec.assetName", assetName),
-                equal("spec.revoked", false),
-                isNull("metadata.deletionTimestamp")))
-            .build();
-        return client.listAll(UserDecorationGrant.class, options,
+        return client.listAll(UserDecorationGrant.class,
+                UserDecorationGrant.activeGrantOptions(userName, assetName),
                 Sort.by(Sort.Order.asc("metadata.name")))
             .filter(grant -> grant.isActiveAt(now));
     }
@@ -797,23 +814,9 @@ public class DecorationGrantService {
                     .then(notify ? notifyRevoked(userName, assetName, reason) : Mono.empty()));
     }
 
-    private Mono<Void> validateRolesExist(List<String> roleNames) {
-        return Flux.fromIterable(roleNames)
-            .concatMap(roleName -> client.fetch(Role.class, roleName)
-                .switchIfEmpty(Mono.error(InteractionPlusException.badRequest(
-                    ErrorCodes.ROLE_NOT_FOUND, "角色不存在", "Halo 角色不存在：" + roleName))))
-            .then();
-    }
-
     private String displayName(Map<String, UserDecorationAsset> assets, String assetName) {
         var asset = assets.get(assetName);
         return asset != null ? asset.getSpec().getDisplayName() : DELETED_ASSET_NAME;
-    }
-
-    private void addEqualIfPresent(List<Condition> conditions, String field, String value) {
-        if (StringUtils.hasText(value)) {
-            conditions.add(equal(field, value));
-        }
     }
 
     private List<String> distinct(List<String> values) {

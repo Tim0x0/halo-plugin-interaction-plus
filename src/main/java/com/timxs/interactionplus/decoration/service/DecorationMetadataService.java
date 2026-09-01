@@ -7,11 +7,13 @@ import static run.halo.app.extension.index.query.Queries.isNull;
 
 import com.timxs.interactionplus.core.constants.ErrorCodes;
 import com.timxs.interactionplus.core.exception.InteractionPlusException;
+import com.timxs.interactionplus.decoration.extension.OrderedMetadataSpec;
 import com.timxs.interactionplus.decoration.extension.UserDecorationAsset;
 import com.timxs.interactionplus.decoration.extension.UserDecorationCategory;
 import com.timxs.interactionplus.decoration.extension.UserDecorationRarity;
 import com.timxs.interactionplus.decoration.extension.UserDecorationTag;
 import com.timxs.interactionplus.decoration.model.MetadataParam;
+import com.timxs.interactionplus.core.support.ExtensionQuerySupport;
 import com.timxs.interactionplus.core.support.ListRequestSupport;
 import com.timxs.interactionplus.core.support.NameGenerator;
 import java.util.ArrayList;
@@ -73,10 +75,7 @@ public class DecorationMetadataService {
         var category = new UserDecorationCategory();
         category.setMetadata(newMetadata("category"));
         var spec = new UserDecorationCategory.Spec();
-        spec.setDisplayName(param.getDisplayName());
-        spec.setDescription(param.getDescription());
-        spec.setEnabled(param.getEnabled() == null || param.getEnabled());
-        spec.setDisplayOrder(param.getDisplayOrder());
+        applyCommonSpec(spec, param, true);
         category.setSpec(spec);
         return client.create(category);
     }
@@ -86,13 +85,7 @@ public class DecorationMetadataService {
         return client.fetch(UserDecorationCategory.class, name)
             .switchIfEmpty(notFound("分类"))
             .flatMap(category -> {
-                var spec = category.getSpec();
-                spec.setDisplayName(param.getDisplayName());
-                spec.setDescription(param.getDescription());
-                if (param.getEnabled() != null) {
-                    spec.setEnabled(param.getEnabled());
-                }
-                spec.setDisplayOrder(param.getDisplayOrder());
+                applyCommonSpec(category.getSpec(), param, false);
                 return client.update(category);
             });
     }
@@ -119,11 +112,8 @@ public class DecorationMetadataService {
         var tag = new UserDecorationTag();
         tag.setMetadata(newMetadata("tag"));
         var spec = new UserDecorationTag.Spec();
-        spec.setDisplayName(param.getDisplayName());
-        spec.setDescription(param.getDescription());
+        applyCommonSpec(spec, param, true);
         spec.setColor(param.getColor());
-        spec.setEnabled(param.getEnabled() == null || param.getEnabled());
-        spec.setDisplayOrder(param.getDisplayOrder());
         tag.setSpec(spec);
         return client.create(tag);
     }
@@ -134,13 +124,8 @@ public class DecorationMetadataService {
             .switchIfEmpty(notFound("标签"))
             .flatMap(tag -> {
                 var spec = tag.getSpec();
-                spec.setDisplayName(param.getDisplayName());
-                spec.setDescription(param.getDescription());
+                applyCommonSpec(spec, param, false);
                 spec.setColor(param.getColor());
-                if (param.getEnabled() != null) {
-                    spec.setEnabled(param.getEnabled());
-                }
-                spec.setDisplayOrder(param.getDisplayOrder());
                 return client.update(tag);
             });
     }
@@ -168,11 +153,8 @@ public class DecorationMetadataService {
         var rarity = new UserDecorationRarity();
         rarity.setMetadata(newMetadata("rarity"));
         var spec = new UserDecorationRarity.Spec();
-        spec.setDisplayName(param.getDisplayName());
-        spec.setDescription(param.getDescription());
+        applyCommonSpec(spec, param, true);
         spec.setColor(param.getColor());
-        spec.setEnabled(param.getEnabled() == null || param.getEnabled());
-        spec.setDisplayOrder(param.getDisplayOrder());
         spec.setExternalGrantable(param.getExternalGrantable());
         rarity.setSpec(spec);
         return client.create(rarity);
@@ -184,13 +166,8 @@ public class DecorationMetadataService {
             .switchIfEmpty(notFound("稀有度"))
             .flatMap(rarity -> {
                 var spec = rarity.getSpec();
-                spec.setDisplayName(param.getDisplayName());
-                spec.setDescription(param.getDescription());
+                applyCommonSpec(spec, param, false);
                 spec.setColor(param.getColor());
-                if (param.getEnabled() != null) {
-                    spec.setEnabled(param.getEnabled());
-                }
-                spec.setDisplayOrder(param.getDisplayOrder());
                 if (param.getExternalGrantable() != null) {
                     spec.setExternalGrantable(param.getExternalGrantable());
                 }
@@ -209,6 +186,21 @@ public class DecorationMetadataService {
     }
 
     // ───────────────────────── 通用逻辑 ─────────────────────────
+
+    /**
+     * 应用三类元数据共有字段：创建时 enabled 为空按启用，更新时仅非空才覆盖
+     * （null 表示「本次不修改」）。各自的可选字段（color / externalGrantable）由调用方补。
+     */
+    private void applyCommonSpec(OrderedMetadataSpec spec, MetadataParam param, boolean create) {
+        spec.setDisplayName(param.getDisplayName());
+        spec.setDescription(param.getDescription());
+        if (create) {
+            spec.setEnabled(param.getEnabled() == null || param.getEnabled());
+        } else if (param.getEnabled() != null) {
+            spec.setEnabled(param.getEnabled());
+        }
+        spec.setDisplayOrder(param.getDisplayOrder());
+    }
 
     /**
      * 删除元数据（级联模式）：任何时候可删，
@@ -249,9 +241,8 @@ public class DecorationMetadataService {
         if (keyword != null) {
             conditions.add(contains("spec.displayName", keyword));
         }
-        Condition[] rest = conditions.subList(1, conditions.size()).toArray(Condition[]::new);
         return ListOptions.builder()
-            .fieldQuery(and(conditions.get(0), rest))
+            .fieldQuery(ExtensionQuerySupport.andAll(conditions))
             .build();
     }
 

@@ -58,4 +58,7 @@ public final class ErrorCodes {
 
     /** 状态流转非法。 */
     public static final String INVALID_STATUS_TRANSITION = "INVALID_STATUS_TRANSITION";
+
+    /** 授予新建 / 续期写入失败。 */
+    public static final String GRANT_ERROR = "GRANT_ERROR";
 }

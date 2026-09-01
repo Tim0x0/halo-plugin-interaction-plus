@@ -2,6 +2,7 @@
 import type {
   DisplayConfig,
   IdentityLineDisplay,
+  IdentityMark,
   PublicIdentity,
   UserCardDisplay,
 } from './identity'
@@ -110,6 +111,26 @@ export function skeletonData(
   }
 }
 
+/** 可被场景开关整体裁掉的装饰槽位（展柜按数量裁剪，不在此列）。 */
+type TrimKey = Exclude<keyof PublicIdentity['decorations'], 'badgeShowcase'>
+
+/** 开关关闭时把对应装饰置 undefined（身份行 / 用户卡共用的裁剪规则，新增开关进这里）。 */
+function trimByFlags(
+  decorations: PublicIdentity['decorations'],
+  flags: Array<[show: boolean, key: TrimKey]>,
+): void {
+  for (const [show, key] of flags) {
+    if (!show) {
+      decorations[key] = undefined
+    }
+  }
+}
+
+/** 身份标识：开关开按场景数量上限截取，关则裁空。 */
+function limitMarks(show: boolean, marks: IdentityMark[], limit: number): IdentityMark[] {
+  return show ? marks.slice(0, Math.max(0, limit)) : []
+}
+
 /**
  * 按当前组件的场景配置裁剪数据。后端读出口给全量；这里返回副本，
  * 避免同页身份行与用户卡互相污染。
@@ -131,20 +152,14 @@ export function applyDisplayPolicy(
     : identity.stats
   if (component === 'identity') {
     const line = display.identityLine
-    if (!line.showTitle) {
-      decorations.title = undefined
-    }
-    if (!line.showPrimaryBadge) {
-      decorations.primaryBadge = undefined
-    }
-    if (!line.showNameStyle) {
-      decorations.nameStyle = undefined
-    }
+    trimByFlags(decorations, [
+      [line.showTitle, 'title'],
+      [line.showPrimaryBadge, 'primaryBadge'],
+      [line.showNameStyle, 'nameStyle'],
+    ])
     return {
       ...identity,
-      identityMarks: line.showIdentityMarks
-        ? marks.slice(0, Math.max(0, line.identityLimit))
-        : [],
+      identityMarks: limitMarks(line.showIdentityMarks, marks, line.identityLimit),
       decorations,
       stats,
       display,
@@ -152,26 +167,16 @@ export function applyDisplayPolicy(
   }
   if (component === 'card') {
     const card = display.userCard
-    if (!card.showTitle) {
-      decorations.title = undefined
-    }
-    if (!card.showPrimaryBadge) {
-      decorations.primaryBadge = undefined
-    }
-    if (!card.showNameStyle) {
-      decorations.nameStyle = undefined
-    }
-    if (!card.showAvatarFrame) {
-      decorations.avatarFrame = undefined
-    }
-    if (!card.showCardBackground) {
-      decorations.cardBackground = undefined
-    }
+    trimByFlags(decorations, [
+      [card.showTitle, 'title'],
+      [card.showPrimaryBadge, 'primaryBadge'],
+      [card.showNameStyle, 'nameStyle'],
+      [card.showAvatarFrame, 'avatarFrame'],
+      [card.showCardBackground, 'cardBackground'],
+    ])
     return {
       ...identity,
-      identityMarks: card.showIdentityMarks
-        ? marks.slice(0, Math.max(0, card.identityLimit))
-        : [],
+      identityMarks: limitMarks(card.showIdentityMarks, marks, card.identityLimit),
       decorations: {
         ...decorations,
         badgeShowcase: card.showShowcase

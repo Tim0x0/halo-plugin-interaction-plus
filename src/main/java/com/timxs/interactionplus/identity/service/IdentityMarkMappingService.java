@@ -10,16 +10,16 @@ import com.timxs.interactionplus.identity.extension.UserIdentityMarkMapping;
 import com.timxs.interactionplus.identity.model.IdentityMarkMappingParam;
 import com.timxs.interactionplus.identity.model.IdentityMarkMappingView;
 import com.timxs.interactionplus.identity.support.PublicIdentityCache;
+import com.timxs.interactionplus.core.support.ExtensionQuerySupport;
 import com.timxs.interactionplus.core.support.ListRequestSupport;
 import com.timxs.interactionplus.core.support.NameGenerator;
 import com.timxs.interactionplus.core.support.RoleUtils;
-import java.util.Map;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ServerWebExchange;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import run.halo.app.core.extension.Role;
 import run.halo.app.extension.ListOptions;
@@ -60,10 +60,7 @@ public class IdentityMarkMappingService {
                     .filter(StringUtils::hasText)
                     .distinct()
                     .toList();
-                return Flux.fromIterable(roleNames)
-                    .flatMap(roleName -> client.fetch(Role.class, roleName)
-                        .map(role -> Map.entry(roleName, role)))
-                    .collectMap(Map.Entry::getKey, Map.Entry::getValue)
+                return ExtensionQuerySupport.fetchAll(client, Role.class, roleNames)
                     .map(roleMap -> {
                         var views = result.getItems().stream()
                             .map(mapping -> {
@@ -131,10 +128,7 @@ public class IdentityMarkMappingService {
     }
 
     private Mono<Void> requireRoleExists(String roleName) {
-        return client.fetch(Role.class, roleName)
-            .switchIfEmpty(Mono.error(InteractionPlusException.badRequest(
-                ErrorCodes.ROLE_NOT_FOUND, "角色不存在", "Halo 角色不存在：" + roleName)))
-            .then();
+        return RoleUtils.requireExists(client, List.of(roleName));
     }
 
     private Mono<Void> ensureRoleNotMapped(String roleName) {

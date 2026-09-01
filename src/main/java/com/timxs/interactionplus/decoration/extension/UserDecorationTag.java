@@ -24,7 +24,7 @@ public class UserDecorationTag extends AbstractExtension {
 
     @Data
     @Schema(name = "UserDecorationTagSpec")
-    public static class Spec {
+    public static class Spec implements OrderedMetadataSpec {
 
         @Schema(requiredMode = Schema.RequiredMode.REQUIRED, maxLength = 50,
             description = "显示名称")

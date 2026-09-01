@@ -2,9 +2,8 @@ package com.timxs.interactionplus.identity.endpoint;
 
 import static org.springframework.web.reactive.function.server.RouterFunctions.route;
 
-import com.timxs.interactionplus.core.constants.ErrorCodes;
 import com.timxs.interactionplus.core.constants.InteractionPlusConst;
-import com.timxs.interactionplus.core.exception.InteractionPlusException;
+import com.timxs.interactionplus.core.support.ListRequestSupport;
 import com.timxs.interactionplus.identity.model.IdentityMarkMappingParam;
 import com.timxs.interactionplus.identity.service.IdentityMarkMappingService;
 import lombok.RequiredArgsConstructor;
@@ -61,9 +60,7 @@ public class ConsoleIdentityMarkEndpoint implements CustomEndpoint {
     }
 
     private Mono<IdentityMarkMappingParam> readBody(ServerRequest request) {
-        return request.bodyToMono(IdentityMarkMappingParam.class)
-            .switchIfEmpty(Mono.error(InteractionPlusException.badRequest(
-                ErrorCodes.VALIDATION_FAILED, "请求体为空", "请求体不能为空。")));
+        return ListRequestSupport.readBody(request, IdentityMarkMappingParam.class);
     }
 
     @Override

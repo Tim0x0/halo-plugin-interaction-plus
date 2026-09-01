@@ -1,8 +1,7 @@
 // 自定义模板来源：后台配置（接口）> 主题 <template>（DOM）> 内置默认
 import type { HipComponent } from './hip-data'
 import type { TemplateSource } from './template-engine'
-
-const API_BASE = '/apis/api.interaction-plus.timxs.com/v1alpha1'
+import { API_BASE } from './identity'
 
 /**
  * 超时上限。

@@ -85,22 +85,13 @@ public class GrantRetentionService {
     }
 
     /**
-     * 判定为「已失效且失效时间早于 cutoff」的死记录：
-     * 已撤销 → 以 revokedAt（缺失回退 grantedAt）判断；
-     * 已过期（未撤销但 expiresAt 已过）→ 以 expiresAt 判断。
-     * 有效授予一律返回 false。
+     * 判定为「已失效且失效时间早于 cutoff」的死记录。失效时刻统一经
+     * {@link UserDecorationGrant#invalidatedAt} 判定（撤销取撤销时间、缺失回退授予时间；
+     * 过期取过期时间）；有效授予一律返回 false。
      */
     private boolean isExpiredOrRevokedBefore(UserDecorationGrant grant, Instant now,
         Instant cutoff) {
-        var spec = grant.getSpec();
-        return switch (grant.stateAt(now)) {
-            case REVOKED -> {
-                var deadAt = spec.getRevokedAt() != null ? spec.getRevokedAt()
-                    : spec.getGrantedAt();
-                yield deadAt != null && deadAt.isBefore(cutoff);
-            }
-            case EXPIRED -> spec.getExpiresAt().isBefore(cutoff);
-            case ACTIVE -> false;
-        };
+        var deadAt = grant.invalidatedAt(grant.stateAt(now));
+        return deadAt != null && deadAt.isBefore(cutoff);
     }
 }

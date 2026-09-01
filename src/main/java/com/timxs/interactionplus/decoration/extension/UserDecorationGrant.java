@@ -2,14 +2,19 @@ package com.timxs.interactionplus.decoration.extension;
 
 import static com.timxs.interactionplus.core.constants.InteractionPlusConst.GROUP;
 import static com.timxs.interactionplus.core.constants.InteractionPlusConst.VERSION;
+import static run.halo.app.extension.index.query.Queries.and;
+import static run.halo.app.extension.index.query.Queries.equal;
+import static run.halo.app.extension.index.query.Queries.isNull;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.Collection;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.jspecify.annotations.Nullable;
 import run.halo.app.extension.AbstractExtension;
 import run.halo.app.extension.GVK;
+import run.halo.app.extension.ListOptions;
 
 /**
  * 用户装饰授予记录。
@@ -107,6 +112,54 @@ public class UserDecorationGrant extends AbstractExtension {
      */
     public boolean isActiveAt(Instant now) {
         return stateAt(now) == State.ACTIVE;
+    }
+
+    /**
+     * 非 ACTIVE 状态的失效时刻：已撤销取撤销时间（缺失回退授予时间），已过期取过期时间；
+     * ACTIVE 返回 null。各「失效时刻」读出口（库存失效排序、保留期清理）统一经此判定，
+     * 避免回退规则在各处漂移。
+     */
+    public @Nullable Instant invalidatedAt(State state) {
+        if (spec == null) {
+            return null;
+        }
+        return switch (state) {
+            case REVOKED -> spec.getRevokedAt() != null
+                ? spec.getRevokedAt() : spec.getGrantedAt();
+            case EXPIRED -> spec.getExpiresAt();
+            case ACTIVE -> null;
+        };
+    }
+
+    /**
+     * 该用户全部未撤销、未删除授予的索引条件。过期不可索引，
+     * 有效性需调用方再经 {@link #isActiveAt} 内存过滤。
+     */
+    public static ListOptions activeGrantOptions(String userName) {
+        return ListOptions.builder()
+            .fieldQuery(and(equal("spec.userName", userName),
+                equal("spec.revoked", false),
+                isNull("metadata.deletionTimestamp")))
+            .build();
+    }
+
+    /** 该用户该装饰全部未撤销、未删除授予的索引条件（有效性判定同上）。 */
+    public static ListOptions activeGrantOptions(String userName, String assetName) {
+        return ListOptions.builder()
+            .fieldQuery(and(equal("spec.userName", userName),
+                equal("spec.assetName", assetName),
+                equal("spec.revoked", false),
+                isNull("metadata.deletionTimestamp")))
+            .build();
+    }
+
+    /** 该装饰全部未撤销、未删除授予的索引条件（级联撤销 / 计数聚合用，有效性判定同上）。 */
+    public static ListOptions activeGrantOptionsForAsset(String assetName) {
+        return ListOptions.builder()
+            .fieldQuery(and(equal("spec.assetName", assetName),
+                equal("spec.revoked", false),
+                isNull("metadata.deletionTimestamp")))
+            .build();
     }
 
     /**

@@ -17,6 +17,7 @@ import com.timxs.interactionplus.decoration.model.ProfileSaveParam;
 import com.timxs.interactionplus.decoration.model.VisibilityParam;
 import com.timxs.interactionplus.decoration.service.DecorationAssetService;
 import com.timxs.interactionplus.decoration.service.DecorationProfileService;
+import com.timxs.interactionplus.core.support.ListRequestSupport;
 import com.timxs.interactionplus.core.support.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
@@ -108,10 +109,7 @@ public class UcDecorationEndpoint implements CustomEndpoint {
     private Mono<ServerResponse> createSubmission(ServerRequest request) {
         // requireUser 仅做登录拦截（SecurityUtils 匿名返回哨兵值而非空链），投稿者由 service 内部取当前用户
         return requireUser()
-            .then(request.bodyToMono(DecorationAssetParam.class))
-            // 空请求体时 bodyToMono 为空链，不拦截会以 200 空响应静默返回
-            .switchIfEmpty(Mono.error(InteractionPlusException.badRequest(
-                ErrorCodes.VALIDATION_FAILED, "请求体为空", "请求体不能为空。")))
+            .then(ListRequestSupport.readBody(request, DecorationAssetParam.class))
             .flatMap(assetService::createSubmission)
             .flatMap(asset -> ServerResponse.ok().bodyValue(asset));
     }
@@ -126,9 +124,7 @@ public class UcDecorationEndpoint implements CustomEndpoint {
     private Mono<ServerResponse> updateSubmission(ServerRequest request) {
         var name = request.pathVariable("name");
         return requireUser().flatMap(userName ->
-            request.bodyToMono(DecorationAssetParam.class)
-                .switchIfEmpty(Mono.error(InteractionPlusException.badRequest(
-                    ErrorCodes.VALIDATION_FAILED, "请求体为空", "请求体不能为空。")))
+            ListRequestSupport.readBody(request, DecorationAssetParam.class)
                 .flatMap(param -> assetService.updateSubmission(userName, name, param))
                 .flatMap(asset -> ServerResponse.ok().bodyValue(asset)));
     }

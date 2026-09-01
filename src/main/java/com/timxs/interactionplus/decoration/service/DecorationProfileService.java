@@ -16,6 +16,7 @@ import com.timxs.interactionplus.decoration.model.InvalidEquipItem;
 import com.timxs.interactionplus.decoration.model.InventoryItem;
 import com.timxs.interactionplus.decoration.model.ProfileSaveParam;
 import com.timxs.interactionplus.decoration.model.ProfileView;
+import com.timxs.interactionplus.core.support.ExtensionQuerySupport;
 import com.timxs.interactionplus.core.support.NameGenerator;
 import com.timxs.interactionplus.identity.service.PublicIdentityService;
 import com.timxs.interactionplus.identity.support.PublicIdentityCache;
@@ -33,7 +34,6 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -160,7 +160,7 @@ public class DecorationProfileService {
         return grants.stream()
             .map(grant -> {
                 var state = grant.stateAt(now);
-                return new GrantInvalidation(grant, state, invalidatedAt(grant, state));
+                return new GrantInvalidation(grant, state, grant.invalidatedAt(state));
             })
             .filter(invalidation -> invalidation.state() != UserDecorationGrant.State.ACTIVE)
             .max(Comparator
@@ -170,17 +170,6 @@ public class DecorationProfileService {
                 .thenComparingInt(invalidation ->
                     invalidation.state() == UserDecorationGrant.State.REVOKED ? 1 : 0))
             .orElseThrow();
-    }
-
-    private static Instant invalidatedAt(UserDecorationGrant grant,
-        UserDecorationGrant.State state) {
-        return switch (state) {
-            case REVOKED -> grant.getSpec().getRevokedAt() != null
-                ? grant.getSpec().getRevokedAt()
-                : grant.getSpec().getGrantedAt();
-            case EXPIRED -> grant.getSpec().getExpiresAt();
-            case ACTIVE -> null;
-        };
     }
 
     private record GrantInvalidation(UserDecorationGrant grant,
@@ -408,13 +397,7 @@ public class DecorationProfileService {
     }
 
     Mono<Map<String, UserDecorationAsset>> loadAssets(List<String> assetNames) {
-        if (CollectionUtils.isEmpty(assetNames)) {
-            return Mono.just(Map.of());
-        }
-        return Flux.fromIterable(assetNames)
-            .flatMap(name -> client.fetch(UserDecorationAsset.class, name)
-                .map(asset -> Map.entry(name, asset)))
-            .collectMap(Map.Entry::getKey, Map.Entry::getValue);
+        return ExtensionQuerySupport.fetchAll(client, UserDecorationAsset.class, assetNames);
     }
 
     private List<SlotEntry> collectSlots(UserDecorationProfile.Spec spec) {

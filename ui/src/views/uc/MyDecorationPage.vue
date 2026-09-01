@@ -16,7 +16,6 @@ import {
   VPagination,
   VTabbar,
 } from '@halo-dev/components'
-import { consoleApiClient } from '@halo-dev/api-client'
 import confetti from 'canvas-confetti'
 import { ucApi } from '@/api'
 import AssetThumb from '@/components/AssetThumb.vue'
@@ -43,6 +42,7 @@ import {
 } from '@/utils/decoration'
 import type { MetadataOptionKind } from '@/utils/decoration'
 import {
+  currentUserDetail,
   DISPLAY_DEFAULTS,
   fromInventoryItem,
   PREVIEW_SCENES,
@@ -76,7 +76,7 @@ interface Selection {
 }
 
 const selection = ref<Selection>(emptySelection())
-const savedSnapshot = ref<string>(JSON.stringify(emptySelection()))
+const savedSelection = ref<Selection>(emptySelection())
 
 function emptySelection(): Selection {
   return {
@@ -87,6 +87,11 @@ function emptySelection(): Selection {
     cardBackground: '',
     nameStyle: '',
   }
+}
+
+/** 深拷贝（平铺字段 + 一个数组）：快照与当前选择必须互不影响。 */
+function cloneSelection(value: Selection): Selection {
+  return { ...value, badgeShowcase: [...value.badgeShowcase] }
 }
 
 function selectionFromProfile(profile: ProfileView): Selection {
@@ -100,7 +105,19 @@ function selectionFromProfile(profile: ProfileView): Selection {
   }
 }
 
-const dirty = computed(() => JSON.stringify(selection.value) !== savedSnapshot.value)
+const dirty = computed(() => {
+  const current = selection.value
+  const saved = savedSelection.value
+  return (
+    current.avatarFrame !== saved.avatarFrame ||
+    current.title !== saved.title ||
+    current.primaryBadge !== saved.primaryBadge ||
+    current.cardBackground !== saved.cardBackground ||
+    current.nameStyle !== saved.nameStyle ||
+    current.badgeShowcase.length !== saved.badgeShowcase.length ||
+    current.badgeShowcase.some((name, index) => name !== saved.badgeShowcase[index])
+  )
+})
 
 // 离开页面脏检查：路由切换销毁组件前确认
 onBeforeRouteLeave((to, from, next) => {
@@ -130,21 +147,20 @@ const currentUser = ref<{
 }>({})
 
 async function loadCurrentUser() {
-  try {
-    // /users/- 是 Halo 唯一当前用户端点（所有已登录用户有权限）
-    const { data } = await consoleApiClient.user.getCurrentUserDetail()
-    currentUser.value = {
-      userName: data.user.metadata.name,
-      displayName: data.user.spec.displayName,
-      avatar: data.user.spec.avatar,
-      bio: data.user.spec.bio,
-      registeredAt: data.user.spec.registeredAt ?? undefined,
-    }
-    if (currentUser.value.userName) {
-      loadBaseIdentity(currentUser.value.userName)
-    }
-  } catch {
+  const user = await currentUserDetail()
+  if (!user) {
     currentUser.value = {}
+    return
+  }
+  currentUser.value = {
+    userName: user.metadata.name,
+    displayName: user.spec.displayName,
+    avatar: user.spec.avatar,
+    bio: user.spec.bio,
+    registeredAt: user.spec.registeredAt ?? undefined,
+  }
+  if (currentUser.value.userName) {
+    loadBaseIdentity(currentUser.value.userName)
   }
 }
 
@@ -209,7 +225,7 @@ function applyProfile(profile: ProfileView) {
   invalidItems.value = profile.invalidItems ?? []
   identityMarks.value = profile.identityMarks ?? []
   selection.value = next
-  savedSnapshot.value = JSON.stringify(next)
+  savedSelection.value = cloneSelection(next)
 }
 
 /** 失效原因映射：assetName → reason（同一资产在多槽位失效原因一致，取首个）。 */
@@ -593,7 +609,7 @@ interface SlotSummary {
 
 const slotSummaries = computed<SlotSummary[]>(() => {
   const s = selection.value
-  const saved: Selection = JSON.parse(savedSnapshot.value)
+  const saved = savedSelection.value
   return SLOT_DEFS.map(({ key, label, type }) => ({
     key,
     label,
@@ -616,8 +632,9 @@ const showcaseSlots = computed(() => {
 })
 
 const showcaseModified = computed(() => {
-  const saved: Selection = JSON.parse(savedSnapshot.value)
-  return JSON.stringify(selection.value.badgeShowcase) !== JSON.stringify(saved.badgeShowcase)
+  const current = selection.value.badgeShowcase
+  const saved = savedSelection.value.badgeShowcase
+  return current.length !== saved.length || current.some((name, index) => name !== saved[index])
 })
 
 function removeShowcaseAt(index: number) {
@@ -660,7 +677,7 @@ async function handleSave() {
 }
 
 function handleReset() {
-  selection.value = JSON.parse(savedSnapshot.value)
+  selection.value = cloneSelection(savedSelection.value)
 }
 
 onMounted(load)

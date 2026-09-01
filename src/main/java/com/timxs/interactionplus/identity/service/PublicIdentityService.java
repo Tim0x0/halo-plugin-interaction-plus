@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Sort;
@@ -249,14 +250,28 @@ public class PublicIdentityService {
             : user.getMetadata().getCreationTimestamp());
         applyDisplayConfig(vo, ctx.display());
 
+        // profile 与有效授予被装饰组装、装饰计数两条链共用：聚合内共享惰性加载（至多订阅一次），
+        // 避免同一请求链里重复读同一扩展
+        var profileMono = client
+            .fetch(UserDecorationProfile.class, NameGenerator.profileName(userName))
+            .cache();
+        var now = Instant.now();
+        var activeGrantsMono = client
+            .listAll(UserDecorationGrant.class, UserDecorationGrant.activeGrantOptions(userName),
+                Sort.by(Sort.Order.asc("metadata.name")))
+            .filter(grant -> grant.isActiveAt(now))
+            .collectList()
+            .cache();
+
         var identityMono = shouldLoadIdentityMarks(ctx.basic())
             ? loadIdentityMarks(userName, ctx).doOnNext(vo::setIdentityMarks)
             : Mono.just(List.<PublicIdentityVo.IdentityMarkVo>of());
 
-        var decorationsMono = loadDecorations(userName, ctx)
+        var decorationsMono = loadDecorations(profileMono, activeGrantsMono, ctx)
             .doOnNext(vo::setDecorations);
 
-        var statsMono = loadStats(userName, ctx).doOnNext(vo::setStats);
+        var statsMono = loadStats(userName, profileMono, activeGrantsMono, ctx)
+            .doOnNext(vo::setStats);
 
         // 三条链无数据依赖（各自 doOnNext 写 vo 的独立字段），并行执行取最大延迟而非之和
         return Mono.when(identityMono, decorationsMono, statsMono).thenReturn(vo);
@@ -403,15 +418,17 @@ public class PublicIdentityService {
 
     // ── 装饰 ──
 
-    private Mono<PublicIdentityVo.DecorationsVo> loadDecorations(String userName,
-        AggregationContext ctx) {
-        return client.fetch(UserDecorationProfile.class, NameGenerator.profileName(userName))
-            .flatMap(profile -> buildDecorations(userName, profile.getSpec(), ctx))
+    private Mono<PublicIdentityVo.DecorationsVo> loadDecorations(
+        Mono<UserDecorationProfile> profileMono,
+        Mono<List<UserDecorationGrant>> activeGrantsMono, AggregationContext ctx) {
+        return profileMono
+            .flatMap(profile -> buildDecorations(profile.getSpec(), activeGrantsMono, ctx))
             .defaultIfEmpty(new PublicIdentityVo.DecorationsVo());
     }
 
-    private Mono<PublicIdentityVo.DecorationsVo> buildDecorations(String userName,
-        UserDecorationProfile.Spec spec, AggregationContext ctx) {
+    private Mono<PublicIdentityVo.DecorationsVo> buildDecorations(
+        UserDecorationProfile.Spec spec, Mono<List<UserDecorationGrant>> activeGrantsMono,
+        AggregationContext ctx) {
         var basic = ctx.basic();
         // 收集所有佩戴的资产名（按全局类型开关过滤）
         var equipped = new LinkedHashSet<String>();
@@ -436,7 +453,7 @@ public class PublicIdentityService {
         if (equipped.isEmpty()) {
             return Mono.just(new PublicIdentityVo.DecorationsVo());
         }
-        return Mono.zip(loadOwnedActiveAssets(userName, equipped), ctx.rarityMap())
+        return Mono.zip(ownedActiveAssets(activeGrantsMono, equipped), ctx.rarityMap())
             .map(tuple -> {
                 var validAssets = tuple.getT1();
                 var rarityMap = tuple.getT2();
@@ -468,30 +485,20 @@ public class PublicIdentityService {
     }
 
     /**
-     * 加载用户佩戴中仍有效的资产：资产 active 且存在有效授予。
+     * 佩戴中仍有效的资产：资产 active 且存在有效授予。
+     * 有效授予与装饰计数链共享（一次聚合至多读一次）。
      */
-    private Mono<Map<String, UserDecorationAsset>> loadOwnedActiveAssets(String userName,
-        Set<String> assetNames) {
-        var now = Instant.now();
-        return client.listAll(UserDecorationGrant.class, activeGrantOptions(userName),
-                Sort.by(Sort.Order.asc("metadata.name")))
-            .filter(grant -> grant.isActiveAt(now))
-            .map(grant -> grant.getSpec().getAssetName())
-            .collect(HashSet<String>::new, HashSet::add)
+    private Mono<Map<String, UserDecorationAsset>> ownedActiveAssets(
+        Mono<List<UserDecorationGrant>> activeGrantsMono, Set<String> assetNames) {
+        return activeGrantsMono
+            .map(grants -> grants.stream()
+                .map(grant -> grant.getSpec().getAssetName())
+                .collect(Collectors.toSet()))
             .flatMap(ownedNames -> Flux.fromIterable(assetNames)
                 .filter(ownedNames::contains)
                 .flatMap(name -> client.fetch(UserDecorationAsset.class, name))
                 .filter(UserDecorationAsset::isActive)
                 .collectMap(asset -> asset.getMetadata().getName()));
-    }
-
-    /** 该用户全部未撤销、未删除授予的查询条件（有效性还需内存过滤 isActiveAt）。 */
-    private ListOptions activeGrantOptions(String userName) {
-        return ListOptions.builder()
-            .fieldQuery(and(equal("spec.userName", userName),
-                equal("spec.revoked", false),
-                isNull("metadata.deletionTimestamp")))
-            .build();
     }
 
     private PublicIdentityVo.DecorationVo toDecorationVo(Map<String, UserDecorationAsset> assets,
@@ -549,14 +556,17 @@ public class PublicIdentityService {
      * 聚合互动统计：文章 / 评论为索引 count 级查询，装扮计数与外部贡献项并行加载。
      * 四条链彼此独立，失败语义各自兜底，不拖垮身份聚合主链。
      */
-    private Mono<PublicIdentityVo.StatsVo> loadStats(String userName, AggregationContext ctx) {
+    private Mono<PublicIdentityVo.StatsVo> loadStats(String userName,
+        Mono<UserDecorationProfile> profileMono,
+        Mono<List<UserDecorationGrant>> activeGrantsMono, AggregationContext ctx) {
         var stats = new PublicIdentityVo.StatsVo();
         var postsMono = client.countBy(Post.class, publishedPostOptions(userName))
             .doOnNext(stats::setPosts);
         var commentsMono = client.countBy(Comment.class, visibleCommentOptions(userName))
             .doOnNext(stats::setComments);
         // 关闭公开装扮墙时为空 Mono，decorations 保持 null（对外语义：不可用）
-        var countsMono = loadDecorationCounts(userName).doOnNext(stats::setDecorations);
+        var countsMono = loadDecorationCounts(profileMono, activeGrantsMono)
+            .doOnNext(stats::setDecorations);
         var extrasMono = loadContributedStats(userName, ctx).doOnNext(stats::setExtras);
         return Mono.when(postsMono, commentsMono, countsMono, extrasMono).thenReturn(stats);
     }
@@ -587,26 +597,25 @@ public class PublicIdentityService {
     /**
      * 按类型统计用户持有的有效装扮（有效授予 + 资产可用，按资产去重，与装饰墙同口径）。
      * 尊重「公开装扮墙」开关：关闭时返回空 Mono（stats.decorations 保持 null）。
+     * profile 与有效授予与装饰组装链共享（一次聚合至多各读一次）。
      */
-    private Mono<PublicIdentityVo.DecorationCountsVo> loadDecorationCounts(String userName) {
-        return client.fetch(UserDecorationProfile.class, NameGenerator.profileName(userName))
+    private Mono<PublicIdentityVo.DecorationCountsVo> loadDecorationCounts(
+        Mono<UserDecorationProfile> profileMono,
+        Mono<List<UserDecorationGrant>> activeGrantsMono) {
+        return profileMono
             .map(profile -> !Boolean.FALSE.equals(profile.getSpec().getPublicDecorationsVisible()))
             .defaultIfEmpty(true)
             .filter(Boolean::booleanValue)
-            .flatMap(ignored -> {
-                var now = Instant.now();
-                return client.listAll(UserDecorationGrant.class, activeGrantOptions(userName),
-                        Sort.by(Sort.Order.asc("metadata.name")))
-                    .filter(grant -> grant.isActiveAt(now))
+            .flatMap(ignored -> activeGrantsMono
+                .flatMapMany(grants -> Flux.fromIterable(grants)
                     .map(grant -> grant.getSpec().getAssetName())
                     .distinct()
                     .flatMap(name -> client.fetch(UserDecorationAsset.class, name),
                         ASSET_FETCH_CONCURRENCY)
                     .filter(UserDecorationAsset::isActive)
-                    .mapNotNull(asset -> DecorationType.from(asset.getSpec().getType()))
-                    .collectList()
-                    .map(this::toDecorationCounts);
-            });
+                    .mapNotNull(asset -> DecorationType.from(asset.getSpec().getType())))
+                .collectList()
+                .map(this::toDecorationCounts));
     }
 
     private PublicIdentityVo.DecorationCountsVo toDecorationCounts(List<DecorationType> types) {
@@ -722,7 +731,8 @@ public class PublicIdentityService {
     private Mono<List<PublicIdentityVo.DecorationVo>> loadOwnedDecorations(String userName) {
         var now = Instant.now();
         return metadataService.loadRarityMap().flatMap(rarityMap ->
-            client.listAll(UserDecorationGrant.class, activeGrantOptions(userName),
+            client.listAll(UserDecorationGrant.class,
+                UserDecorationGrant.activeGrantOptions(userName),
                 Sort.by(Sort.Order.desc("spec.grantedAt")))
             .filter(grant -> grant.isActiveAt(now))
             .collectList()

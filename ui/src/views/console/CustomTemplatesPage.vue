@@ -2,8 +2,8 @@
 // Console - 自定义组件页：站长贴 HTML + CSS 完全接管 hip-* 组件的渲染
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { Toast, VButton, VCard, VPageHeader, VSpace, VTabbar } from '@halo-dev/components'
-import { consoleApiClient } from '@halo-dev/api-client'
 import { customTemplateApi } from '@/api'
+import { currentUserDetail } from '@/utils/preview-identity'
 import { loadRuntime, type HipRuntime } from '@/utils/runtime-loader'
 import ListSkeleton from '@/components/ListSkeleton.vue'
 import ListError from '@/components/ListError.vue'
@@ -214,14 +214,11 @@ async function loadSample() {
   }
 }
 
-/** 取当前登录用户名作为默认样本。 */
+/** 取当前登录用户名作为默认样本；拿不到就留空，站长自己填一个用户名。 */
 async function loadCurrentUser() {
-  try {
-    // /users/- 是 Halo 唯一当前用户端点（所有已登录用户有权限）
-    const { data } = await consoleApiClient.user.getCurrentUserDetail()
-    previewUserName.value = data.user.metadata.name
-  } catch {
-    // 拿不到就留空，站长自己填一个用户名
+  const user = await currentUserDetail()
+  if (user) {
+    previewUserName.value = user.metadata.name
   }
 }
 

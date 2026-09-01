@@ -2,9 +2,8 @@ package com.timxs.interactionplus.template.endpoint;
 
 import static org.springframework.web.reactive.function.server.RouterFunctions.route;
 
-import com.timxs.interactionplus.core.constants.ErrorCodes;
 import com.timxs.interactionplus.core.constants.InteractionPlusConst;
-import com.timxs.interactionplus.core.exception.InteractionPlusException;
+import com.timxs.interactionplus.core.support.ListRequestSupport;
 import com.timxs.interactionplus.template.model.CustomTemplateParam;
 import com.timxs.interactionplus.template.service.CustomTemplateService;
 import lombok.RequiredArgsConstructor;
@@ -47,9 +46,7 @@ public class ConsoleCustomTemplateEndpoint implements CustomEndpoint {
 
     private Mono<ServerResponse> saveTemplate(ServerRequest request) {
         var component = request.pathVariable("component");
-        return request.bodyToMono(CustomTemplateParam.class)
-            .switchIfEmpty(Mono.error(InteractionPlusException.badRequest(
-                ErrorCodes.VALIDATION_FAILED, "请求体为空", "请求体不能为空。")))
+        return ListRequestSupport.readBody(request, CustomTemplateParam.class)
             .flatMap(param -> customTemplateService.save(component, param))
             .flatMap(template -> ServerResponse.ok().bodyValue(template));
     }

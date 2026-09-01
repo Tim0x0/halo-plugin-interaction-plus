@@ -181,19 +181,28 @@ export function withDecorations(base: PublicIdentity, slots: DecorationSlots): P
 }
 
 /**
+ * 取当前登录用户详情。
+ *
+ * <p>/users/- 是 Halo 唯一当前用户端点（所有已登录用户有权限）。
+ * 拿不到就返回 undefined，各调用方自行决定降级形态。
+ */
+export async function currentUserDetail() {
+  try {
+    const { data } = await consoleApiClient.user.getCurrentUserDetail()
+    return data.user
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * 取当前登录用户的头像，给资产预览的底座用。
  *
  * <p>拿不到就返回 undefined，模板回落首字母占位 —— 预览少张头像不是错误，
  * 不值得为它中断整个预览。
  */
 export async function currentUserAvatar(): Promise<string | undefined> {
-  try {
-    // /users/- 是 Halo 唯一当前用户端点（所有已登录用户有权限）
-    const { data } = await consoleApiClient.user.getCurrentUserDetail()
-    return data.user.spec.avatar
-  } catch {
-    return undefined
-  }
+  return (await currentUserDetail())?.spec.avatar
 }
 
 /**

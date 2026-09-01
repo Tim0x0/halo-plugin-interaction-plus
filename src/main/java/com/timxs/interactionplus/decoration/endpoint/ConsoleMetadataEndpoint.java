@@ -2,9 +2,8 @@ package com.timxs.interactionplus.decoration.endpoint;
 
 import static org.springframework.web.reactive.function.server.RouterFunctions.route;
 
-import com.timxs.interactionplus.core.constants.ErrorCodes;
 import com.timxs.interactionplus.core.constants.InteractionPlusConst;
-import com.timxs.interactionplus.core.exception.InteractionPlusException;
+import com.timxs.interactionplus.core.support.ListRequestSupport;
 import com.timxs.interactionplus.decoration.model.MetadataParam;
 import com.timxs.interactionplus.decoration.service.DecorationMetadataService;
 import lombok.RequiredArgsConstructor;
@@ -115,9 +114,7 @@ public class ConsoleMetadataEndpoint implements CustomEndpoint {
     }
 
     private Mono<MetadataParam> readBody(ServerRequest request) {
-        return request.bodyToMono(MetadataParam.class)
-            .switchIfEmpty(Mono.error(InteractionPlusException.badRequest(
-                ErrorCodes.VALIDATION_FAILED, "请求体为空", "请求体不能为空。")));
+        return ListRequestSupport.readBody(request, MetadataParam.class);
     }
 
     // ── 引用数（删除确认提示影响面用） ──

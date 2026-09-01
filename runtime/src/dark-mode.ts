@@ -32,14 +32,25 @@ function prefersDark(): boolean {
 /**
  * 判断单个宿主是否处于暗色。
  *
- * 用 closest 逐个宿主查祖先而不是扫全文档：主题可能只在某个容器上挂暗色 class，
+ * 沿组合树向上逐层判定：先 closest 查宿主所在树直到该树的根，仍未命中且身处
+ * Shadow 树时跳到宿主元素继续向上——嵌在其它插件影子根里的组件（评论区整体渲染在
+ * comment-widget 这类自定义元素的 Shadow DOM 内）只有这样才能看到 html / body 上的
+ * 暗色挂点，closest 本身不跨影子边界。主题可能只在某个容器上挂暗色 class，
  * 按祖先判定才与「这一块是暗的」的视觉事实一致。
  */
 function isDark(host: HTMLElement): boolean {
-  if (host.closest(DARK_SELECTOR)) {
-    return true
+  let node: Element | null = host
+  while (node) {
+    if (node.closest(DARK_SELECTOR)) {
+      return true
+    }
+    if (node.closest(AUTO_SELECTOR) && prefersDark()) {
+      return true
+    }
+    const root = node.getRootNode()
+    node = root instanceof ShadowRoot ? root.host : null
   }
-  return !!host.closest(AUTO_SELECTOR) && prefersDark()
+  return false
 }
 
 /** 应用到单个宿主。渲染前调用，保证首帧 CSS 就能命中。 */
@@ -97,6 +108,14 @@ function ensureWatching(): void {
   query.addEventListener('change', refreshAll)
 }
 
+/** 无宿主消费时停掉全文档观察与媒体监听，下次有组件登记时由 ensureWatching 重建。 */
+function stopWatching(): void {
+  observer?.disconnect()
+  observer = null
+  mediaQuery?.removeEventListener('change', refreshAll)
+  mediaQuery = null
+}
+
 /** 组件挂载时登记，并立即应用一次。 */
 export function registerDarkHost(host: HTMLElement): void {
   ensureWatching()
@@ -104,7 +123,10 @@ export function registerDarkHost(host: HTMLElement): void {
   applyDarkAttribute(host)
 }
 
-/** 组件卸载时注销，避免集合无限增长。 */
+/** 组件卸载时注销，避免集合无限增长；全部卸载后停止观察。 */
 export function unregisterDarkHost(host: HTMLElement): void {
   hosts.delete(host)
+  if (hosts.size === 0) {
+    stopWatching()
+  }
 }

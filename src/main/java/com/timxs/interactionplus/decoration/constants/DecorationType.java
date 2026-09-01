@@ -1,5 +1,7 @@
 package com.timxs.interactionplus.decoration.constants;
 
+import java.util.Arrays;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -22,6 +24,13 @@ public enum DecorationType {
 
     public String getValue() {
         return value;
+    }
+
+    /** 全部类型值的 {@code a/b/c} 列表（错误文案用，与枚举声明顺序一致）。 */
+    public static String allValues() {
+        return Arrays.stream(values())
+            .map(DecorationType::getValue)
+            .collect(Collectors.joining("/"));
     }
 
     @Nullable

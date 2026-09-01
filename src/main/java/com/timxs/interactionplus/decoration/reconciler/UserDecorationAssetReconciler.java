@@ -3,9 +3,6 @@ package com.timxs.interactionplus.decoration.reconciler;
 import static run.halo.app.extension.ExtensionUtil.addFinalizers;
 import static run.halo.app.extension.ExtensionUtil.isDeleted;
 import static run.halo.app.extension.ExtensionUtil.removeFinalizers;
-import static run.halo.app.extension.index.query.Queries.and;
-import static run.halo.app.extension.index.query.Queries.equal;
-import static run.halo.app.extension.index.query.Queries.isNull;
 
 import com.timxs.interactionplus.decoration.extension.UserDecorationAsset;
 import com.timxs.interactionplus.decoration.extension.UserDecorationGrant;
@@ -21,7 +18,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import run.halo.app.extension.ExtensionClient;
-import run.halo.app.extension.ListOptions;
 import run.halo.app.extension.controller.Controller;
 import run.halo.app.extension.controller.ControllerBuilder;
 import run.halo.app.extension.controller.Reconciler;
@@ -68,12 +64,8 @@ public class UserDecorationAssetReconciler implements Reconciler<Reconciler.Requ
     private void cleanUp(UserDecorationAsset asset) {
         var assetName = asset.getMetadata().getName();
         var now = Instant.now();
-        var options = ListOptions.builder()
-            .fieldQuery(and(equal("spec.assetName", assetName),
-                equal("spec.revoked", false),
-                isNull("metadata.deletionTimestamp")))
-            .build();
-        var grants = client.listAll(UserDecorationGrant.class, options,
+        var grants = client.listAll(UserDecorationGrant.class,
+            UserDecorationGrant.activeGrantOptionsForAsset(assetName),
             Sort.by(Sort.Order.asc("metadata.name")));
         for (UserDecorationGrant grant : grants) {
             if (!grant.isActiveAt(now)) {

@@ -12,8 +12,10 @@ import com.timxs.interactionplus.template.service.CustomTemplateService;
 import com.timxs.interactionplus.decoration.service.BootstrapService;
 import java.time.Instant;
 import java.util.Set;
+import java.util.function.Function;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import run.halo.app.extension.AbstractExtension;
 import run.halo.app.extension.Scheme;
 import run.halo.app.extension.SchemeManager;
 import run.halo.app.extension.index.IndexSpecs;
@@ -138,43 +140,40 @@ public class InteractionPlusPlugin extends BasePlugin {
     }
 
     private void registerCategory() {
-        schemeManager.register(UserDecorationCategory.class, specs -> {
-            specs.add(
-                IndexSpecs.<UserDecorationCategory, Boolean>single("spec.enabled", Boolean.class)
-                    .indexFunc(category -> !Boolean.FALSE.equals(category.getSpec().getEnabled())));
-            specs.add(IndexSpecs.<UserDecorationCategory, Integer>single("spec.displayOrder",
-                    Integer.class)
-                .indexFunc(category -> category.getSpec().getDisplayOrder()));
-            specs.add(IndexSpecs.<UserDecorationCategory, String>single("spec.displayName",
-                    String.class)
-                .indexFunc(category -> category.getSpec().getDisplayName()));
-        });
+        registerOrderedMetadata(UserDecorationCategory.class,
+            category -> category.getSpec().getEnabled(),
+            category -> category.getSpec().getDisplayOrder(),
+            category -> category.getSpec().getDisplayName());
     }
 
     private void registerTag() {
-        schemeManager.register(UserDecorationTag.class, specs -> {
-            specs.add(IndexSpecs.<UserDecorationTag, Boolean>single("spec.enabled", Boolean.class)
-                .indexFunc(tag -> !Boolean.FALSE.equals(tag.getSpec().getEnabled())));
-            specs.add(
-                IndexSpecs.<UserDecorationTag, Integer>single("spec.displayOrder", Integer.class)
-                    .indexFunc(tag -> tag.getSpec().getDisplayOrder()));
-            specs.add(
-                IndexSpecs.<UserDecorationTag, String>single("spec.displayName", String.class)
-                    .indexFunc(tag -> tag.getSpec().getDisplayName()));
-        });
+        registerOrderedMetadata(UserDecorationTag.class,
+            tag -> tag.getSpec().getEnabled(),
+            tag -> tag.getSpec().getDisplayOrder(),
+            tag -> tag.getSpec().getDisplayName());
     }
 
     private void registerRarity() {
-        schemeManager.register(UserDecorationRarity.class, specs -> {
-            specs.add(
-                IndexSpecs.<UserDecorationRarity, Boolean>single("spec.enabled", Boolean.class)
-                    .indexFunc(rarity -> !Boolean.FALSE.equals(rarity.getSpec().getEnabled())));
-            specs.add(IndexSpecs.<UserDecorationRarity, Integer>single("spec.displayOrder",
-                    Integer.class)
-                .indexFunc(rarity -> rarity.getSpec().getDisplayOrder()));
-            specs.add(
-                IndexSpecs.<UserDecorationRarity, String>single("spec.displayName", String.class)
-                    .indexFunc(rarity -> rarity.getSpec().getDisplayName()));
+        registerOrderedMetadata(UserDecorationRarity.class,
+            rarity -> rarity.getSpec().getEnabled(),
+            rarity -> rarity.getSpec().getDisplayOrder(),
+            rarity -> rarity.getSpec().getDisplayName());
+    }
+
+    /**
+     * 有序元数据（分类 / 标签 / 稀有度）统一注册同一组索引：
+     * enabled（!FALSE 即启用）、displayOrder、displayName，三类仅实体类型不同。
+     */
+    private <E extends AbstractExtension> void registerOrderedMetadata(Class<E> type,
+        Function<E, Boolean> enabled, Function<E, Integer> displayOrder,
+        Function<E, String> displayName) {
+        schemeManager.register(type, specs -> {
+            specs.add(IndexSpecs.<E, Boolean>single("spec.enabled", Boolean.class)
+                .indexFunc(ext -> !Boolean.FALSE.equals(enabled.apply(ext))));
+            specs.add(IndexSpecs.<E, Integer>single("spec.displayOrder", Integer.class)
+                .indexFunc(displayOrder::apply));
+            specs.add(IndexSpecs.<E, String>single("spec.displayName", String.class)
+                .indexFunc(displayName::apply));
         });
     }
 

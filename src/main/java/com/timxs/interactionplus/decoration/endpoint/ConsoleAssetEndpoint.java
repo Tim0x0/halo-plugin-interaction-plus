@@ -2,9 +2,8 @@ package com.timxs.interactionplus.decoration.endpoint;
 
 import static org.springframework.web.reactive.function.server.RouterFunctions.route;
 
-import com.timxs.interactionplus.core.constants.ErrorCodes;
 import com.timxs.interactionplus.core.constants.InteractionPlusConst;
-import com.timxs.interactionplus.core.exception.InteractionPlusException;
+import com.timxs.interactionplus.core.support.ListRequestSupport;
 import com.timxs.interactionplus.decoration.model.DecorationAssetParam;
 import com.timxs.interactionplus.decoration.service.DecorationAssetService;
 import lombok.RequiredArgsConstructor;
@@ -92,9 +91,7 @@ public class ConsoleAssetEndpoint implements CustomEndpoint {
     }
 
     private Mono<DecorationAssetParam> readBody(ServerRequest request) {
-        return request.bodyToMono(DecorationAssetParam.class)
-            .switchIfEmpty(Mono.error(InteractionPlusException.badRequest(
-                ErrorCodes.VALIDATION_FAILED, "请求体为空", "请求体不能为空。")));
+        return ListRequestSupport.readBody(request, DecorationAssetParam.class);
     }
 
     private Mono<ServerResponse> ok(Object body) {

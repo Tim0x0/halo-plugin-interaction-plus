@@ -23,7 +23,7 @@ public class UserDecorationCategory extends AbstractExtension {
 
     @Data
     @Schema(name = "UserDecorationCategorySpec")
-    public static class Spec {
+    public static class Spec implements OrderedMetadataSpec {
 
         @Schema(requiredMode = Schema.RequiredMode.REQUIRED, maxLength = 50,
             description = "显示名称")

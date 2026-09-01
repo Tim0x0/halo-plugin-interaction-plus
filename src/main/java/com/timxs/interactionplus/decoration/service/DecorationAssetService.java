@@ -1,6 +1,5 @@
 package com.timxs.interactionplus.decoration.service;
 
-import static run.halo.app.extension.index.query.Queries.and;
 import static run.halo.app.extension.index.query.Queries.contains;
 import static run.halo.app.extension.index.query.Queries.equal;
 import static run.halo.app.extension.index.query.Queries.isNull;
@@ -15,6 +14,7 @@ import com.timxs.interactionplus.decoration.extension.UserDecorationGrant;
 import com.timxs.interactionplus.decoration.model.DecorationAssetParam;
 import com.timxs.interactionplus.core.notification.InteractionPlusNotificationService;
 import com.timxs.interactionplus.core.setting.InteractionPlusSettingService;
+import com.timxs.interactionplus.core.support.ExtensionQuerySupport;
 import com.timxs.interactionplus.core.support.ListRequestSupport;
 import com.timxs.interactionplus.core.support.NameGenerator;
 import com.timxs.interactionplus.core.support.SecurityUtils;
@@ -27,7 +27,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
@@ -74,9 +73,6 @@ public class DecorationAssetService {
 
     /** 素材内容读取大小上限（与素材建议上限同量级，防止超大响应占用内存）。 */
     private static final int MATERIAL_MAX_BYTES = 4 * 1024 * 1024;
-
-    /** 校验素材 URL 允许的协议（SSRF 防护）。 */
-    private static final Set<String> ALLOWED_SCHEMES = Set.of("http", "https");
 
     /** 昵称颜色格式校验（hex）；仅此字段需要，其余颜色字段由 spec 的 @Schema(pattern) 兜底。 */
     private static final Pattern HEX_COLOR = Pattern.compile(InteractionPlusConst.HEX_COLOR_PATTERN);
@@ -239,7 +235,8 @@ public class DecorationAssetService {
     /** 资产当前有效授予数（前端删除确认提示影响面用）。 */
     public Mono<Long> countActiveGrants(String assetName) {
         var now = Instant.now();
-        return client.listAll(UserDecorationGrant.class, activeGrantOptions(assetName),
+        return client.listAll(UserDecorationGrant.class,
+                UserDecorationGrant.activeGrantOptionsForAsset(assetName),
                 Sort.by(Sort.Order.asc("metadata.name")))
             .filter(grant -> grant.isActiveAt(now))
             .count();
@@ -248,7 +245,8 @@ public class DecorationAssetService {
     /** 级联撤销该资产全部有效授予，并清理对应用户佩戴槽位与缓存。 */
     private Mono<Void> revokeActiveGrants(String assetName, String operator) {
         var now = Instant.now();
-        return client.listAll(UserDecorationGrant.class, activeGrantOptions(assetName),
+        return client.listAll(UserDecorationGrant.class,
+                UserDecorationGrant.activeGrantOptionsForAsset(assetName),
                 Sort.by(Sort.Order.asc("metadata.name")))
             .filter(grant -> grant.isActiveAt(now))
             .concatMap(grant -> {
@@ -258,14 +256,6 @@ public class DecorationAssetService {
                     .then(profileService.removeAssetFromProfile(userName, assetName));
             })
             .then();
-    }
-
-    private ListOptions activeGrantOptions(String assetName) {
-        return ListOptions.builder()
-            .fieldQuery(and(equal("spec.assetName", assetName),
-                equal("spec.revoked", false),
-                isNull("metadata.deletionTimestamp")))
-            .build();
     }
 
     private Mono<Void> notifyDraftRejectedIfNeeded(UserDecorationAsset asset) {
@@ -288,7 +278,7 @@ public class DecorationAssetService {
         }
         if (DecorationType.from(param.getType()) == null) {
             throw InteractionPlusException.badRequest(ErrorCodes.INVALID_ASSET_TYPE,
-                "装饰类型非法", "装饰类型必须为 badge/avatar_frame/title/card_background/name_style。");
+                "装饰类型非法", "装饰类型必须为 " + DecorationType.allValues() + "。");
         }
         if (!StringUtils.hasText(param.getDisplayName())) {
             throw InteractionPlusException.badRequest(ErrorCodes.VALIDATION_FAILED,
@@ -397,15 +387,12 @@ public class DecorationAssetService {
      * （素材仅 decoration:manage 管理员可配置）。
      */
     private Mono<Void> validateExternalUrl(String url) {
+        // 协议闸门：仅 http/https 绝对地址走 SSRF 校验（站内相对地址不受限）
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             return Mono.empty();
         }
         return Mono.fromCallable(() -> {
                 URI uri = URI.create(url);
-                String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
-                if (!ALLOWED_SCHEMES.contains(scheme)) {
-                    throw unsafeMaterialUrl();
-                }
                 String host = uri.getHost();
                 if (!StringUtils.hasText(host)) {
                     throw unsafeMaterialUrl();
@@ -521,10 +508,12 @@ public class DecorationAssetService {
         List<Condition> conditions = new ArrayList<>();
         conditions.add(equal("spec.submittedBy", userName));
         conditions.add(isNull("metadata.deletionTimestamp"));
-        addEqualIfPresent(conditions, "spec.status", params.getFirst("status"));
-        addEqualIfPresent(conditions, "spec.type", params.getFirst("type"));
-        Condition[] rest = conditions.subList(1, conditions.size()).toArray(Condition[]::new);
-        var options = ListOptions.builder().fieldQuery(and(conditions.get(0), rest)).build();
+        ExtensionQuerySupport.addEqualIfPresent(conditions, "spec.status",
+            params.getFirst("status"));
+        ExtensionQuerySupport.addEqualIfPresent(conditions, "spec.type",
+            params.getFirst("type"));
+        var options = ListOptions.builder()
+            .fieldQuery(ExtensionQuerySupport.andAll(conditions)).build();
         return client.listBy(UserDecorationAsset.class, options,
             ListRequestSupport.toPageRequest(exchange, ASSET_SORT));
     }
@@ -587,26 +576,24 @@ public class DecorationAssetService {
         var params = exchange.getRequest().getQueryParams();
         List<Condition> conditions = new ArrayList<>();
         conditions.add(isNull("metadata.deletionTimestamp"));
-        addEqualIfPresent(conditions, "spec.type", params.getFirst("type"));
-        addEqualIfPresent(conditions, "spec.status", params.getFirst("status"));
+        ExtensionQuerySupport.addEqualIfPresent(conditions, "spec.type",
+            params.getFirst("type"));
+        ExtensionQuerySupport.addEqualIfPresent(conditions, "spec.status",
+            params.getFirst("status"));
         // 分类 / 稀有度 / 标签支持「未分类 / 无稀有度 / 无标签」哨兵值
         addEqualOrNone(conditions, "spec.categoryName", params.getFirst("categoryName"));
         addEqualOrNone(conditions, "spec.rarityName", params.getFirst("rarityName"));
-        addEqualIfPresent(conditions, "spec.submittedBy", params.getFirst("submittedBy"));
-        addEqualIfPresent(conditions, "spec.createdBy", params.getFirst("createdBy"));
+        ExtensionQuerySupport.addEqualIfPresent(conditions, "spec.submittedBy",
+            params.getFirst("submittedBy"));
+        ExtensionQuerySupport.addEqualIfPresent(conditions, "spec.createdBy",
+            params.getFirst("createdBy"));
         addEqualOrNone(conditions, "spec.tagNames", params.getFirst("tagName"));
         String keyword = ListRequestSupport.getKeyword(exchange);
         if (keyword != null) {
             conditions.add(contains("spec.displayName", keyword));
         }
-        Condition[] rest = conditions.subList(1, conditions.size()).toArray(Condition[]::new);
-        return ListOptions.builder().fieldQuery(and(conditions.get(0), rest)).build();
-    }
-
-    private void addEqualIfPresent(List<Condition> conditions, String field, String value) {
-        if (StringUtils.hasText(value)) {
-            conditions.add(equal(field, value));
-        }
+        return ListOptions.builder()
+            .fieldQuery(ExtensionQuerySupport.andAll(conditions)).build();
     }
 
     private void addEqualOrNone(List<Condition> conditions, String field, String value) {

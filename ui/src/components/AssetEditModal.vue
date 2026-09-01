@@ -159,26 +159,35 @@ const accepts = computed(() => {
   return ['image/png', 'image/webp', 'image/svg+xml', 'image/gif']
 })
 
+// ── 预览与提交共用的取值规则（两处必须一致，否则站长所见非所得） ──
+
+/** 昵称颜色：纯色取首色；渐变按填入顺序至多三色，空位剔除。 */
+const nameStyleColors = computed(() =>
+  formState.nameStyleMode === 'solid'
+    ? [formState.color1]
+    : [formState.color1, formState.color2, formState.color3].filter(Boolean),
+)
+
+/** 称号背景第二色仅在主背景色存在时有意义。 */
+function titleBackgroundSecondary(): string | undefined {
+  return formState.titleBackground && formState.titleBackground2
+    ? formState.titleBackground2
+    : undefined
+}
+
 // 实时预览数据：干净底座 + 正在编辑的这一件（跟随表单值）。
 // 底座刻意不用站长自己的真实装扮 —— 素材要判断的是自身观感，旁边摆着一身别的装扮
 // 会干扰判断，而且每个站长账号装扮不同，同一个素材会看出不同结论
 const previewIdentity = computed<PublicIdentity>(() => {
   const url = needMaterial.value && formState.assetUrl ? formState.assetUrl : undefined
-  const colors =
-    formState.nameStyleMode === 'solid'
-      ? [formState.color1]
-      : [formState.color1, formState.color2, formState.color3].filter(Boolean)
   // 各类型的字段一并备好，最终只有当前类型对应的槽位会被读到
   const payload: AssetPayload = {
     // 未填时给占位文案，否则称号预览是个空牌子
     titleText: formState.titleText || '称号预览',
     titleColor: formState.titleColor || undefined,
     titleBackground: formState.titleBackground || undefined,
-    titleBackgroundSecondary:
-      formState.titleBackground && formState.titleBackground2
-        ? formState.titleBackground2
-        : undefined,
-    nameStyle: { mode: formState.nameStyleMode, colors },
+    titleBackgroundSecondary: titleBackgroundSecondary(),
+    nameStyle: { mode: formState.nameStyleMode, colors: nameStyleColors.value },
   }
   // 昵称恒用底座的「示例用户」，不跟随装饰名称字段（装饰名不是昵称样本）
   return sampleIdentityWith({ type: formState.type, url, payload }, currentAvatar.value)
@@ -273,19 +282,11 @@ function buildParam(): DecorationAssetParam {
       // 三色恒入库：行内文字牌用它，卡片的图挂了回落文字牌也用它
       titleColor: formState.titleColor || undefined,
       titleBackground: formState.titleBackground || undefined,
-      // 第二色仅在主背景色存在时有意义
-      titleBackgroundSecondary:
-        formState.titleBackground && formState.titleBackground2
-          ? formState.titleBackground2
-          : undefined,
+      titleBackgroundSecondary: titleBackgroundSecondary(),
     }
   } else if (formState.type === 'name_style') {
-    const colors =
-      formState.nameStyleMode === 'solid'
-        ? [formState.color1]
-        : [formState.color1, formState.color2, formState.color3].filter(Boolean)
     param.payload = {
-      nameStyle: { mode: formState.nameStyleMode, colors },
+      nameStyle: { mode: formState.nameStyleMode, colors: nameStyleColors.value },
     }
   }
   return param

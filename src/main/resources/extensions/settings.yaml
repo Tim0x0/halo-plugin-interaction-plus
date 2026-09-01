@@ -164,7 +164,7 @@ spec:
         - $formkit: text
           name: userCardLinkTemplate
           label: 用户卡跳转链接
-          help: 用户卡头像 / 名字点击后跳转的链接模板，{name} 会替换为用户名；留空表示不跳转
+          help: 身份行昵称、用户卡头像 / 名字点击后跳转的链接模板，{name} 会替换为用户名；留空则两处一起关闭
           value: "/authors/{name}"
     - group: decoration.management
       label: 装饰管理

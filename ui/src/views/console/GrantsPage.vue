@@ -95,6 +95,13 @@ function sourceTitle(view: GrantView): string {
   return lines.join('\n')
 }
 
+/** 有效期列文案（正文与悬停 title 共用同一口径）。 */
+function expiryText(view: GrantView): string {
+  return view.grant.spec.expiresAt
+    ? `${formatDateTime(view.grant.spec.expiresAt)} 到期`
+    : '永久有效'
+}
+
 const grantVisible = ref(false)
 const revokeTarget = ref<GrantView | null>(null)
 /** 再次授予目标（已撤销记录）：预填原用户与原装饰 */
@@ -240,19 +247,8 @@ onMounted(load)
                 </span>
               </td>
               <td>
-                <span
-                  class="hip-table__cell-ellipsis"
-                  :title="
-                    view.grant.spec.expiresAt
-                      ? `${formatDateTime(view.grant.spec.expiresAt)} 到期`
-                      : '永久有效'
-                  "
-                >
-                  {{
-                    view.grant.spec.expiresAt
-                      ? `${formatDateTime(view.grant.spec.expiresAt)} 到期`
-                      : '永久有效'
-                  }}
+                <span class="hip-table__cell-ellipsis" :title="expiryText(view)">
+                  {{ expiryText(view) }}
                 </span>
               </td>
               <td>
