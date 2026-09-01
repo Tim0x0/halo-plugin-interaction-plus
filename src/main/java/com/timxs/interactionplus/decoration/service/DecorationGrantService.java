@@ -322,7 +322,8 @@ public class DecorationGrantService {
                     ? processOne(pair, assets, grantType, reason, expiresAt, operator)
                     : Mono.just(Outcome.failed(pair, ErrorCodes.USER_NOT_FOUND)))
                 .collectList()
-                .flatMap(outcomes -> buildResultAndNotify(outcomes, assets, operator, userMap)));
+                .flatMap(outcomes -> buildResultAndNotify(outcomes, assets, reason, operator,
+                    userMap)));
     }
 
     private Mono<Outcome> processOne(Pair pair, Map<String, UserDecorationAsset> assets,
@@ -446,7 +447,8 @@ public class DecorationGrantService {
     }
 
     private Mono<BatchGrantResult> buildResultAndNotify(List<Outcome> outcomes,
-        Map<String, UserDecorationAsset> assets, String operator, Map<String, User> userMap) {
+        Map<String, UserDecorationAsset> assets, String reason, String operator,
+        Map<String, User> userMap) {
         return Mono.defer(() -> {
             var result = new BatchGrantResult();
             for (Outcome outcome : outcomes) {
@@ -483,8 +485,8 @@ public class DecorationGrantService {
                     result.getSkippedCount(), result.getFailedCount())
                 : Mono.empty();
             return Flux.fromIterable(grantedByUser.entrySet())
-                .concatMap(entry ->
-                    notificationService.notifyDecorationsGranted(entry.getKey(), entry.getValue()))
+                .concatMap(entry -> notificationService.notifyDecorationsGranted(
+                    entry.getKey(), entry.getValue(), reason))
                 .then(notifyOperator)
                 .thenReturn(result);
         });
@@ -672,7 +674,7 @@ public class DecorationGrantService {
                             reason, expiresAt, null)
                             .flatMap(grant -> (heldBefore ? Mono.<Void>empty()
                                 : notificationService.notifyDecorationsGranted(userName,
-                                    List.of(displayName)))
+                                    List.of(displayName), reason))
                                 .thenReturn(GrantResult
                                     .granted(grant.getMetadata().getName()))));
             })

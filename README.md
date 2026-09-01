@@ -12,6 +12,8 @@
 
 > 前台展示由主题或提供前台页面的插件决定放在哪，Interaction Plus 不自动注入页面。以下为接入后的典型落点。
 
+**在线演示**：[作者页](https://blog.timxs.com/authors/admin) —— 用户卡（头像框 / 称号 / 勋章 / 身份牌）与装扮墙。
+
 **评论区**：昵称行（头像框 + 昵称样式 + 身份标识 + 称号 + 勋章），点击展开用户卡
 
 ![评论区效果](docs/images/frontend-comment.png)

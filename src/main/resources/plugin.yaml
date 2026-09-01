@@ -15,7 +15,7 @@ spec:
   logo: logo.png
   homepage: https://github.com/Tim0x0/halo-plugin-interaction-plus#readme
   repo: https://github.com/Tim0x0/halo-plugin-interaction-plus
-  issues: https://github.com/Tim0x0/halo-plugin-interaction-plus/issues
+  issues: https://blog.timxs.com/bbs?category=interaction-plus
   displayName: "互动增强"
   description: "为站点增强社区互动：身份与装扮、前台展示，并开放给其他插件接入。"
   settingName: "interaction-plus-settings"

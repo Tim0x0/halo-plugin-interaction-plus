@@ -41,16 +41,19 @@ public class InteractionPlusNotificationService {
     private final ReactiveExtensionClient client;
 
     /**
-     * 用户获得装饰（同一批次多个装饰合并为一条）。
+     * 用户获得装饰（同一批次多个装饰合并为一条）。reason 为空时不显示授予原因句子。
      */
-    public Mono<Void> notifyDecorationsGranted(String userName, List<String> decorationNames) {
+    public Mono<Void> notifyDecorationsGranted(String userName, List<String> decorationNames,
+        String reason) {
         if (!StringUtils.hasText(userName) || decorationNames == null
             || decorationNames.isEmpty()) {
             return Mono.empty();
         }
+        String reasonSentence = StringUtils.hasText(reason) ? "授予原因：" + reason + "。" : "";
         return emitToUser(REASON_DECORATION_GRANTED, userName, Map.of(
             "count", String.valueOf(decorationNames.size()),
-            "decorations", String.join("、", decorationNames)));
+            "decorations", String.join("、", decorationNames),
+            "reasonSentence", reasonSentence));
     }
 
     /**

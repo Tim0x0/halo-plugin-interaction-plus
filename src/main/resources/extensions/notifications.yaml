@@ -16,6 +16,10 @@ spec:
     - name: decorations
       type: string
       description: "装饰名称列表，已拼接为文本。"
+    - name: reasonSentence
+      type: string
+      description: "授予原因句子；无原因时为空字符串。"
+      optional: true
 ---
 apiVersion: notification.halo.run/v1alpha1
 kind: ReasonType
@@ -87,9 +91,9 @@ spec:
   template:
     title: "你获得了新的装饰"
     rawBody: |
-      你获得了 [(${count})] 个新装饰：[(${decorations})]。
+      你获得了 [(${count})] 个新装饰：[(${decorations})]。[(${reasonSentence})]
     htmlBody: |
-      <p th:text="|你获得了 ${count} 个新装饰：${decorations}。|"></p>
+      <p th:text="|你获得了 ${count} 个新装饰：${decorations}。${reasonSentence}|"></p>
 ---
 apiVersion: notification.halo.run/v1alpha1
 kind: NotificationTemplate
