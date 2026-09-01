@@ -129,7 +129,7 @@ async function handleSubmit() {
       result.value.successCount === 0 &&
       result.value.renewedCount === 0
     ) {
-      Toast.error('授予全部失败，请查看失败明细')
+      Toast.error('授予全部失败，请查看明细')
     } else {
       Toast.warning('授予部分完成，请查看明细')
     }

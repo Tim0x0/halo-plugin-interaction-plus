@@ -56,7 +56,7 @@ async function copyId() {
     Toast.success('已复制装饰标识')
   } catch {
     // 标识值已设 user-select: all，点击即可全选
-    Toast.warning('复制失败，请手动选中复制')
+    Toast.warning('复制失败，请手动复制')
   }
 }
 

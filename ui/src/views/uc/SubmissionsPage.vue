@@ -70,7 +70,7 @@ function openCreate() {
 
 function openEdit(asset: DecorationAsset) {
   if (asset.spec.status !== 'draft') {
-    Toast.warning('该投稿已被处理，不能再编辑')
+    Toast.warning('投稿已处理，不能再编辑')
     return
   }
   editing.value = asset

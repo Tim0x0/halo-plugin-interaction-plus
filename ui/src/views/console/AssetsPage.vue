@@ -269,7 +269,7 @@ async function transition(asset: DecorationAsset, action: TransitionAction) {
   transitionPending.value.add(name)
   try {
     await assetApi[action](name)
-    Toast.success(`${TRANSITION_LABELS[action]}成功`)
+    Toast.success(`已${TRANSITION_LABELS[action]}`)
     if (filters.status) {
       reloadAfterRemove(1)
     } else {

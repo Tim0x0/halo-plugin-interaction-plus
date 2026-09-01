@@ -54,7 +54,7 @@ async function handleRevoke() {
         props.grant.spec.assetName,
         trimmedReason,
       )
-      Toast.success(`已撤销全部来源的授予（${revokedCount} 条），装饰已收回`)
+      Toast.success(`已撤销全部来源（${revokedCount} 条）`)
     } else {
       await grantApi.revoke(props.grant.metadata.name, trimmedReason)
       Toast.success('撤销成功')

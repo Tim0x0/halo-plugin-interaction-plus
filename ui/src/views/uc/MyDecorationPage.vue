@@ -664,7 +664,7 @@ async function handleSave() {
     // 用服务端实际保存结果回写本地选择（失效项保留、标记，不卸载）
     applyProfile(profile)
     if (invalidItems.value.length) {
-      Toast.warning('已保存；其中失效装饰在公开展示时会自动隐藏')
+      Toast.warning('已保存，失效装饰前台不展示')
     } else {
       Toast.success('佩戴已保存')
       confetti({ particleCount: 80, spread: 70, origin: { y: 0.7 } })

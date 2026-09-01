@@ -156,7 +156,7 @@ function resetToBuiltin() {
   }
   current.html = builtin.html
   current.css = builtin.css
-  Toast.success('已恢复为内置默认模板（未保存）')
+  Toast.success('已恢复内置默认（未保存）')
 }
 
 // ── 预览 ──────────────────────────────────────────────
