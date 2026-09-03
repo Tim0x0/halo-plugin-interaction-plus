@@ -81,9 +81,11 @@ jobs:
           INPUT_STATUS: ${{ inputs.status }}
           INPUT_TITLE: ${{ inputs.title }}
         run: |
-          # release 事件直接读事件负载；手动运行按 tag 从仓库 release 列表里找
+          # release 事件直接读事件负载；手动运行按 tag 从仓库 release 列表里找。
+          # 事件负载把 release 对象嵌在 .release 下（顶层是 action/repository/sender），
+          # 须解包取 .release，后面的 .id/.assets/.tag_name 才取得到。
           if [ "$GITHUB_EVENT_NAME" = "release" ]; then
-            cp "$GITHUB_EVENT_PATH" release.json
+            jq '.release' "$GITHUB_EVENT_PATH" > release.json
           else
             gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > releases.json
             jq --arg tag "$INPUT_TAG" '[.[] | select(.tag_name == $tag)] | first' \
