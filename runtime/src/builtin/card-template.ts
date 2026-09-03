@@ -609,6 +609,11 @@ img.avatar {
   border-radius: 4px;
   font-size: 12px;
   line-height: 1;
+}
+
+/* 有底色才是「牌」：补内边距（.title--chip 由 card-parts 按背景有无打上）。
+   裸文字称号无此类、无内边距——称号独行，空内边距会把文字读成整行缩进。 */
+.title--chip {
   padding: 4px 10px;
 }
 

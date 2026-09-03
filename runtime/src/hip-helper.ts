@@ -19,7 +19,8 @@ import { escapeCssUrl, escapeHtml, safeHexColor, type PublicIdentity } from './i
  *
  * <p>⚠ 片段自带结构不自带样式：用的是内置类名（.avatar / .avatar--fallback / .frame /
  * .name / .mark / .mark-icon / .title / .title-img / .badge），样式得由 CSS 框里的
- * 对应规则提供。
+ * 对应规则提供。称号有底色时另带修饰类 .title--chip（裸文字无），供 CSS 区分
+ * 「牌 / 裸文字」两种形态。
  *
  * <p>⚠ 签名与片段类名 / 结构属于对外模板契约。站长保存的自定义模板依赖这些名称与结构，
  * 因此不能随意修改上列类名，也不能拆掉「图 + 回落牌并排」或「首字母占位常驻叠放」。

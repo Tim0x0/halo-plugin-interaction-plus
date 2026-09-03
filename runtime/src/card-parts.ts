@@ -189,6 +189,9 @@ export function titleNode(identity: PublicIdentity): DocumentFragment {
  * `titleCss`（对象形式）是同一规则的两份实现（不同构建产物、刻意不共包）。
  * 改**hex 白名单、渐变角度（135deg）、双色/单色分支**时必须两处同改，
  * 否则后台缩略图与前台效果不一致 —— 不报错、只是站长看到的与访客不同。
+ *
+ * <p>`title--chip` 修饰类不在此清单：缩略图（AssetThumb）恒为有底盒子，没有
+ * 「裸文字」形态，`titleCss` 无对应概念，勿同步过去。
  */
 function textTitleNode(title: DecorationVo): HTMLElement {
   const chip = document.createElement('span')
@@ -205,6 +208,11 @@ function textTitleNode(title: DecorationVo): HTMLElement {
     chip.style.background = `linear-gradient(135deg,${background},${backgroundSecondary})`
   } else if (background) {
     chip.style.background = background
+  }
+  // 有底色才成「牌」：带 .title--chip 修饰类，模板 CSS 据此给牌补左右内边距；
+  // 裸文字称号不带此类、无内边距，文字与相邻元素之间只隔行内 gap。
+  if (background) {
+    chip.classList.add('title--chip')
   }
   return chip
 }

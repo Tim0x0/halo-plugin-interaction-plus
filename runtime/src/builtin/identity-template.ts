@@ -120,6 +120,11 @@ const CSS = `*,
   font-size: 0.75em;
   font-weight: 400;
   line-height: 1;
+}
+
+/* 有底色才是「牌」：补左右内边距（.title--chip 由 card-parts 按背景有无打上）。
+   裸文字称号无此类、无内边距；高度仍由上面的等高规则撑着，与同排图元对齐。 */
+.title--chip {
   padding: 0 6px;
 }
 

@@ -458,7 +458,7 @@ marks.querySelectorAll('.mark').forEach(function (el) {
 root.querySelector('.line').append(marks)
 ```
 
-> ⚠ **片段自带结构，不自带样式**。它们用的是内置类名（`.avatar` / `.avatar--fallback` / `.frame` / `.name` / `.mark` / `.mark-icon` / `.title` / `.title-img` / `.badge`），样式由 **CSS 框里的对应规则**提供。预填的默认 CSS 含这些规则，所以「只改 HTML 不动 CSS」时片段是有样式的；清空 CSS 框自己写时，用到的片段会裸奔。
+> ⚠ **片段自带结构，不自带样式**。它们用的是内置类名（`.avatar` / `.avatar--fallback` / `.frame` / `.name` / `.mark` / `.mark-icon` / `.title` / `.title-img` / `.badge`），样式由 **CSS 框里的对应规则**提供。预填的默认 CSS 含这些规则，所以「只改 HTML 不动 CSS」时片段是有样式的；清空 CSS 框自己写时，用到的片段会裸奔。称号有底色时另带修饰类 `.title--chip`（裸文字称号没有）：想让裸文字称号不占左右空白，内边距要写在 `.title--chip` 上、**别写在 `.title` 上**——写反了裸文字照样两侧留白。即 `.title { /* 不写左右 padding */ }`、`.title--chip { padding: 0 6px; }`。
 >
 > ⚠ **这些类名和结构是对外契约**，与 `hipHelper` 签名同级：可以在内部加节点，但不能改已有类名、不能把现有节点换成别的标签、不能拆掉「图 + 回落牌并排」或「首字母占位常驻叠放」。默认模板自己的容器类（`.line` / `.wrapper` / `.plink` / 用户卡布局类）不在此列，那是预填内容的私有约定。
 >
