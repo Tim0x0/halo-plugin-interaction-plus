@@ -45,10 +45,12 @@ repositories {
 
 ```gradle
 dependencies {
-    compileOnly 'com.github.Tim0x0.halo-plugin-interaction-plus:api:1.0.0'
+    compileOnly 'com.github.Tim0x0:halo-plugin-interaction-plus:1.0.0'
 }
 ```
 
+> 注意坐标是**仓库级扁平坐标**（group=GitHub 用户、artifact=仓库名），没有 `:api:` 段：
+> 本项目用自定义 `install` 命令构建，JitPack 会把产物归一到这个坐标。
 > `api` 模块只包含接口与 DTO；运行时实现由 Interaction Plus `1.0.0` 提供。
 
 ### 第 2 步：声明可选依赖
