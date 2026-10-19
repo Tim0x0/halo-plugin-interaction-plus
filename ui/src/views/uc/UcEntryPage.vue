@@ -1,28 +1,20 @@
 <script lang="ts" setup>
-// UC「装扮」父路由壳：按权限跳转到第一个有权访问的子页面
+// UC「装扮」父路由壳：登录用户一律进入「我的装扮」。
+// 「我的投稿」由子路由的 decoration:submit 单独控制，不参与默认跳转。
 import { watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { utils } from '@halo-dev/ui-shared'
 
 const route = useRoute()
 const router = useRouter()
 
-const CANDIDATES = [
-  { name: 'InteractionPlusUcMyDecoration', permission: 'plugin:interaction-plus:decoration:equip' },
-  { name: 'InteractionPlusUcSubmissions', permission: 'plugin:interaction-plus:decoration:submit' },
-]
-
-function redirectToFirstAccessible() {
+function redirectToMyDecoration() {
   if (route.name !== 'InteractionPlusUcDecorations') {
     return
   }
-  const target = CANDIDATES.find((candidate) => utils.permission.has([candidate.permission]))
-  if (target) {
-    router.replace({ name: target.name })
-  }
+  router.replace({ name: 'InteractionPlusUcMyDecoration' })
 }
 
-watch(() => route.name, redirectToFirstAccessible, { immediate: true })
+watch(() => route.name, redirectToMyDecoration, { immediate: true })
 </script>
 
 <template>

@@ -97,21 +97,20 @@ rules:
     resources: ["assets"]
     verbs: ["get", "list"]
 ---
-# ── 佩戴我的装饰（decoration:equip）默认聚合给所有登录用户 ──────────
+# ── 佩戴我的装饰：API 聚合给所有登录用户，无菜单权限 ────────────────
 apiVersion: v1alpha1
 kind: Role
 metadata:
   name: interaction-plus-role-decoration-user
   labels:
     halo.run/role-template: "true"
-    # 聚合给全体登录用户的模板按官方惯例隐藏，避免角色管理界面出现人人已有的冗余项
+    # 全体登录用户都有，角色管理里不提供勾选。菜单不消费 ui-permissions：
+    # hidden 模板不会进入普通用户的菜单权限计算，所以「我的装扮」路由不设权限。
     halo.run/hidden: "true"
     rbac.authorization.halo.run/aggregate-to-authenticated: "true"
   annotations:
     rbac.authorization.halo.run/module: "互动增强"
     rbac.authorization.halo.run/display-name: "佩戴我的装饰"
-    rbac.authorization.halo.run/ui-permissions: |
-      ["plugin:interaction-plus:decoration:equip"]
 rules:
   # GET /inventory、/profile、/metadata 均无 name 段归 list；PUT /profile 与
   # PUT /profile/visibility 按两段式解析均落在 profile+update（visibility 是 name 非子资源）

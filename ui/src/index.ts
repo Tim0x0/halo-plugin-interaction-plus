@@ -115,10 +115,7 @@ export default definePlugin({
         component: UcEntryPage,
         meta: {
           title: '装扮',
-          permissions: [
-            'plugin:interaction-plus:decoration:equip',
-            'plugin:interaction-plus:decoration:submit',
-          ],
+          // 不设权限：登录即可进入「我的装扮」。投稿入口由子路由单独限制。
           menu: {
             name: '装扮',
             group: '互动',
@@ -133,7 +130,6 @@ export default definePlugin({
             component: MyDecorationPage,
             meta: {
               title: '我的装扮',
-              permissions: ['plugin:interaction-plus:decoration:equip'],
               menu: { name: '我的装扮', priority: 0 },
             },
           },
